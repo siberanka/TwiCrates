@@ -218,6 +218,7 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
         this.dialogs.register(CrateDialogs.CRATE_ITEM, CrateItemDialog::new);
         this.dialogs.register(CrateDialogs.CRATE_PREVIEW, () -> new CratePreviewDialog(this.plugin));
         this.dialogs.register(CrateDialogs.CRATE_OPENING, () -> new CrateOpeningDialog(this.plugin));
+        this.dialogs.register(CrateDialogs.CRATE_DISPLAY, () -> new CrateDisplayDialog(this.plugin));
         this.dialogs.register(CrateDialogs.CRATE_OPENING_LIMITS, CrateOpeningLimitsDialog::new);
         this.dialogs.register(CrateDialogs.CRATE_EFFECT, () -> new CrateEffectDialog(this.dialogs));
         this.dialogs.register(CrateDialogs.CRATE_PARTICLE, CrateParticleDialog::new);
@@ -577,6 +578,13 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
         UserCrateData userCrate = user.getCrateData(crate);
         Cost realCost = options.has(OpenOptions.Option.IGNORE_COST) ? null : cost;
 
+        if (source.hasBlock()) {
+            Block block = source.getBlock();
+            if (block == null || this.getCrateByLocation(block.getLocation()) != crate) {
+                return false;
+            }
+        }
+
         if (!this.testRestrictions(player, crate)) {
             this.pushback(player, source);
             return false;
@@ -627,16 +635,46 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
         player.closeInventory(); // Cheat clients must die
 
         Opening opening = this.plugin.getOpeningManager().createOpening(player, source, realCost);
-
-        this.plugin.getOpeningManager().startOpening(player, opening, options.has(OpenOptions.Option.IGNORE_ANIMATION));
+        boolean costTaken = false;
+        boolean itemTaken = false;
+        ItemStack item = source.getItem();
+        int previousAmount = item == null ? 0 : item.getAmount();
 
         if (realCost != null) {
-            realCost.takeAll(player);
+            if (!realCost.tryTakeAll(player)) {
+                Lang.CRATE_OPEN_TOO_EXPENSIVE.message().send(player, replacer -> replacer
+                    .replace(crate.replacePlaceholders())
+                    .replace(Placeholders.GENERIC_COSTS, () -> realCost.formatInline(", "))
+                );
+                return false;
+            }
+            costTaken = true;
         }
 
-        ItemStack item = source.getItem();
         if (item != null) {
-            item.setAmount(item.getAmount() - 1);
+            if (item.getAmount() <= 0) {
+                if (costTaken && realCost != null) realCost.refundAll(player);
+                return false;
+            }
+            item.setAmount(previousAmount - 1);
+            itemTaken = true;
+        }
+
+        boolean started;
+        try {
+            started = this.plugin.getOpeningManager().tryStartOpening(player, opening, options.has(OpenOptions.Option.IGNORE_ANIMATION));
+        }
+        catch (RuntimeException | LinkageError exception) {
+            if (itemTaken && item != null) item.setAmount(previousAmount);
+            if (costTaken && realCost != null) realCost.refundAll(player);
+            throw exception;
+        }
+
+        if (!started) {
+            if (itemTaken && item != null) item.setAmount(previousAmount);
+            if (costTaken && realCost != null) realCost.refundAll(player);
+            Lang.CRATE_OPEN_ERROR_ALREADY.message().send(player);
+            return false;
         }
 
         return true;

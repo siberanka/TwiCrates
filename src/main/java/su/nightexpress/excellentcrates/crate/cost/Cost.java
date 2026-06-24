@@ -16,6 +16,7 @@ import su.nightexpress.nightcore.util.problem.ProblemCollector;
 import su.nightexpress.nightcore.util.problem.ProblemReporter;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
@@ -95,8 +96,33 @@ public class Cost implements Writeable {
         this.entries.forEach(entry -> entry.take(player));
     }
 
+    public boolean tryTakeAll(@NotNull Player player) {
+        List<CostEntry> taken = new ArrayList<>();
+        try {
+            for (CostEntry entry : this.entries) {
+                if (!entry.hasEnough(player)) {
+                    refundTaken(player, taken);
+                    return false;
+                }
+
+                entry.take(player);
+                taken.add(entry);
+            }
+            return true;
+        }
+        catch (RuntimeException | LinkageError exception) {
+            refundTaken(player, taken);
+            return false;
+        }
+    }
+
     public void refundAll(@NotNull Player player) {
         this.entries.forEach(entry -> entry.refund(player));
+    }
+
+    private static void refundTaken(@NotNull Player player, @NotNull List<CostEntry> taken) {
+        Collections.reverse(taken);
+        taken.forEach(entry -> entry.refund(player));
     }
 
     public int countMaxOpenings(@NotNull Player player) {

@@ -9,11 +9,18 @@ import su.nightexpress.excellentcrates.CratesPlugin;
 import su.nightexpress.excellentcrates.Placeholders;
 import su.nightexpress.excellentcrates.config.Lang;
 import su.nightexpress.excellentcrates.config.Perms;
+import su.nightexpress.excellentcrates.api.crate.Reward;
 import su.nightexpress.excellentcrates.crate.cost.Cost;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.crate.impl.CrateSource;
 import su.nightexpress.excellentcrates.crate.impl.OpenOptions;
+import su.nightexpress.excellentcrates.crate.reward.impl.ItemReward;
+import su.nightexpress.excellentcrates.display.CrateModelProvider;
+import su.nightexpress.excellentcrates.display.JavaCrateModel;
+import su.nightexpress.excellentcrates.hooks.ExternalProviderBridge;
 import su.nightexpress.excellentcrates.key.CrateKey;
+import su.nightexpress.excellentcrates.util.ItemHelper;
+import su.nightexpress.nightcore.bridge.item.AdaptedItem;
 import su.nightexpress.nightcore.commands.Arguments;
 import su.nightexpress.nightcore.commands.Commands;
 import su.nightexpress.nightcore.commands.builder.HubNodeBuilder;
@@ -27,6 +34,7 @@ import su.nightexpress.nightcore.util.Players;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.function.Function;
 
 public class BaseCommands {
@@ -173,6 +181,41 @@ public class BaseCommands {
             .withArguments(CommandArguments.forCrate(plugin))
             .executes(this::setCrateBlock)
         );
+
+        nodeBuilder.branch(Commands.literal("model")
+            .description(Lang.COMMAND_MODEL_DESC)
+            .permission(Perms.COMMAND_MODEL)
+            .withArguments(
+                CommandArguments.forCrate(plugin),
+                CommandArguments.forModelPhase(),
+                CommandArguments.forModelProvider(),
+                CommandArguments.string(CommandArguments.MODEL, Lang.COMMAND_ARGUMENT_NAME_MODEL, this::getAllModelIds)
+            )
+            .executes(this::setCrateModel)
+        );
+
+        nodeBuilder.branch(Commands.hub("craftengine")
+            .description(Lang.COMMAND_CRAFTENGINE_DESC)
+            .permission(Perms.COMMAND_CRAFTENGINE)
+            .branch(Commands.literal("base")
+                .description(Lang.COMMAND_CRAFTENGINE_BASE_DESC)
+                .withArguments(
+                    CommandArguments.forCrate(plugin),
+                    CommandArguments.string(CommandArguments.ITEM, Lang.COMMAND_ARGUMENT_NAME_ITEM, ExternalProviderBridge::listCraftEngineItemIds)
+                )
+                .executes(this::setCraftEngineBaseItem)
+            )
+            .branch(Commands.literal("reward")
+                .description(Lang.COMMAND_CRAFTENGINE_REWARD_DESC)
+                .withArguments(
+                    CommandArguments.forCrate(plugin),
+                    CommandArguments.string(CommandArguments.REWARD, Lang.COMMAND_ARGUMENT_NAME_REWARD, this::getItemRewardIds),
+                    CommandArguments.string(CommandArguments.ITEM, Lang.COMMAND_ARGUMENT_NAME_ITEM, ExternalProviderBridge::listCraftEngineItemIds),
+                    Arguments.integer(CommandArguments.AMOUNT, 1).localized(CoreLang.COMMAND_ARGUMENT_NAME_AMOUNT).suggestions((reader, context) -> Lists.newList("1", "4", "16", "64")).optional()
+                )
+                .executes(this::addCraftEngineRewardItem)
+            )
+        );
     }
 
     private boolean setCrateBlock(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
@@ -186,6 +229,107 @@ public class BaseCommands {
 
         Lang.COMMAND_SET_DONE.message().send(player, replacer -> replacer.replace(crate.replacePlaceholders()));
         return true;
+    }
+
+    private boolean setCrateModel(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
+        Crate crate = arguments.get(CommandArguments.CRATE, Crate.class);
+        String phase = arguments.getString(CommandArguments.PHASE);
+        CrateModelProvider provider = arguments.get(CommandArguments.PROVIDER, CrateModelProvider.class);
+        String modelId = arguments.getString(CommandArguments.MODEL, "");
+        if (!ExternalProviderBridge.isSafeId(modelId, 128)) return false;
+
+        JavaCrateModel model = getPhaseModel(crate, phase);
+        model.setProvider(provider);
+        if (provider == CrateModelProvider.ITEM_MODEL) {
+            model.setItemModel(modelId);
+            model.setProviderModelId("");
+        }
+        else {
+            model.setProviderModelId(modelId);
+        }
+
+        crate.markDirty();
+        crate.saveIfDirty();
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.refresh(crate));
+        Lang.COMMAND_MODEL_DONE.message().send(context.getSender(), replacer -> replacer
+            .replace(crate.replacePlaceholders())
+            .replace(Placeholders.GENERIC_TYPE, phase + "/" + provider.getId())
+            .replace(Placeholders.GENERIC_VALUE, modelId)
+        );
+        return true;
+    }
+
+    private boolean setCraftEngineBaseItem(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
+        Crate crate = arguments.get(CommandArguments.CRATE, Crate.class);
+        String itemId = arguments.getString(CommandArguments.ITEM, "");
+        AdaptedItem item = ExternalProviderBridge.createCraftEngineItem(itemId, 1).orElse(null);
+        if (item == null) {
+            Lang.COMMAND_CRAFTENGINE_UNAVAILABLE.message().send(context.getSender());
+            return false;
+        }
+
+        crate.setItem(item);
+        crate.markDirty();
+        crate.saveIfDirty();
+        Lang.COMMAND_CRAFTENGINE_BASE_DONE.message().send(context.getSender(), replacer -> replacer
+            .replace(crate.replacePlaceholders())
+            .replace(Placeholders.GENERIC_VALUE, itemId)
+        );
+        return true;
+    }
+
+    private boolean addCraftEngineRewardItem(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
+        Crate crate = arguments.get(CommandArguments.CRATE, Crate.class);
+        String rewardId = arguments.getString(CommandArguments.REWARD, "");
+        Reward reward = crate.getReward(rewardId);
+        if (!(reward instanceof ItemReward itemReward)) return false;
+
+        String itemId = arguments.getString(CommandArguments.ITEM, "");
+        int amount = arguments.getInt(CommandArguments.AMOUNT, 1);
+        AdaptedItem item = ExternalProviderBridge.createCraftEngineItem(itemId, amount).orElse(null);
+        if (item == null) {
+            Lang.COMMAND_CRAFTENGINE_UNAVAILABLE.message().send(context.getSender());
+            return false;
+        }
+
+        itemReward.addItem(item);
+        crate.markDirty();
+        crate.saveIfDirty();
+        Lang.COMMAND_CRAFTENGINE_REWARD_DONE.message().send(context.getSender(), replacer -> replacer
+            .replace(reward.replacePlaceholders())
+            .replace(Placeholders.GENERIC_VALUE, itemId)
+        );
+        return true;
+    }
+
+    @NotNull
+    private List<String> getAllModelIds() {
+        List<String> ids = new ArrayList<>();
+        ids.add("twicrates:example_model");
+        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.BETTERMODEL));
+        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.MODELENGINE));
+        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.MYTHICMOBS));
+        return ids.stream().distinct().limit(512).toList();
+    }
+
+    @NotNull
+    private List<String> getItemRewardIds() {
+        return this.plugin.getCrateManager().getCrates().stream()
+            .flatMap(crate -> crate.getRewards().stream())
+            .filter(reward -> reward instanceof ItemReward)
+            .map(Reward::getId)
+            .distinct()
+            .limit(512)
+            .toList();
+    }
+
+    @NotNull
+    private static JavaCrateModel getPhaseModel(@NotNull Crate crate, @NotNull String phase) {
+        return switch (phase.toLowerCase()) {
+            case "opening" -> crate.getJavaOpeningModel();
+            case "closing" -> crate.getJavaClosingModel();
+            default -> crate.getJavaIdleModel();
+        };
     }
 
     @NotNull

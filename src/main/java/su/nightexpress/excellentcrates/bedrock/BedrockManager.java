@@ -7,12 +7,16 @@ import org.geysermc.cumulus.form.SimpleForm;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import su.nightexpress.excellentcrates.CratesPlugin;
+import su.nightexpress.excellentcrates.Placeholders;
 import su.nightexpress.excellentcrates.api.crate.Reward;
+import su.nightexpress.excellentcrates.config.Lang;
 import su.nightexpress.excellentcrates.crate.cost.Cost;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
 import su.nightexpress.excellentcrates.crate.impl.CrateSource;
 import su.nightexpress.excellentcrates.crate.impl.OpenOptions;
 import su.nightexpress.excellentcrates.util.InteractType;
+import su.nightexpress.nightcore.util.placeholder.Replacer;
+import su.nightexpress.nightcore.util.text.night.wrapper.TagWrappers;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -28,9 +32,11 @@ public final class BedrockManager {
 
     private static final int REWARDS_PER_PAGE = 24;
     private static final long ACTION_COOLDOWN_NANOS = 400_000_000L;
+    private static final long FORM_COOLDOWN_NANOS = 120_000_000L;
 
     private final CratesPlugin plugin;
     private final Map<UUID, Long> actionCooldowns;
+    private final Map<UUID, Long> formCooldowns;
 
     private Object geyserApi;
     private Object floodgateApi;
@@ -38,6 +44,7 @@ public final class BedrockManager {
     public BedrockManager(@NotNull CratesPlugin plugin) {
         this.plugin = plugin;
         this.actionCooldowns = new ConcurrentHashMap<>();
+        this.formCooldowns = new ConcurrentHashMap<>();
     }
 
     public void setup() {
@@ -54,12 +61,14 @@ public final class BedrockManager {
 
     public void shutdown() {
         this.actionCooldowns.clear();
+        this.formCooldowns.clear();
         this.geyserApi = null;
         this.floodgateApi = null;
     }
 
     public void forgetPlayer(@NotNull UUID uuid) {
         this.actionCooldowns.remove(uuid);
+        this.formCooldowns.remove(uuid);
     }
 
     public boolean isBedrockPlayer(@NotNull Player player) {
@@ -75,6 +84,7 @@ public final class BedrockManager {
                                  @NotNull InteractType interaction,
                                  @Nullable Location sourceLocation) {
         if (!this.isBedrockPlayer(player) || !crate.isBedrockFormsEnabled()) return false;
+        if (!this.consumeFormAction(player)) return true;
 
         Location safeSource = sourceLocation == null ? null : sourceLocation.clone();
         return interaction == InteractType.CRATE_PREVIEW
@@ -92,19 +102,21 @@ public final class BedrockManager {
 
         List<Cost> costs = crate.getCosts().stream().filter(Cost::isAvailable).toList();
         if (!costs.isEmpty()) {
-            content.append("\n\nCosts:\n");
+            content.append("\n\n").append(plain(Lang.BEDROCK_FORM_COSTS_HEADER.text(), 120)).append('\n');
             for (Cost cost : costs.stream().limit(16).toList()) {
-                content.append("- ").append(plain(cost.getName(), 80)).append(": ")
-                    .append(plain(cost.formatInline(", "), 160)).append('\n');
+                String entry = Replacer.create().replace(cost.replacePlaceholders())
+                    .replace(Placeholders.GENERIC_COSTS, () -> cost.formatInline(", "))
+                    .apply(Lang.BEDROCK_FORM_COST_ENTRY.text());
+                content.append(plain(entry, 260)).append('\n');
             }
         }
 
         SimpleForm.Builder form = SimpleForm.builder()
             .title(plain(crate.getName(), 120))
             .content(content.toString())
-            .button("Preview rewards")
-            .button("Open crate")
-            .button("Close")
+            .button(plain(Lang.BEDROCK_FORM_BUTTON_PREVIEW.text(), 100))
+            .button(plain(Lang.BEDROCK_FORM_BUTTON_OPEN.text(), 100))
+            .button(plain(Lang.BEDROCK_FORM_BUTTON_CLOSE.text(), 100))
             .validResultHandler(response -> {
                 if (response.clickedButtonId() == 0) this.runSync(player, () -> this.showRewards(player, crate, source, 0));
                 else if (response.clickedButtonId() == 1) this.runSync(player, () -> this.chooseCostOrOpen(player, crate, source));
@@ -120,13 +132,20 @@ public final class BedrockManager {
         int from = page * REWARDS_PER_PAGE;
         int to = Math.min(rewards.size(), from + REWARDS_PER_PAGE);
 
+        String title = Replacer.create().replace(crate.replacePlaceholders()).apply(Lang.BEDROCK_FORM_REWARDS_TITLE.text());
+        String pageText = Replacer.create()
+            .replace(Placeholders.GENERIC_CURRENT, () -> String.valueOf(page + 1))
+            .replace(Placeholders.GENERIC_MAX, () -> String.valueOf(pageCount))
+            .replace(Placeholders.GENERIC_AMOUNT, () -> String.valueOf(rewards.size()))
+            .apply(Lang.BEDROCK_FORM_REWARDS_PAGE.text());
         SimpleForm.Builder form = SimpleForm.builder()
-            .title(plain(crate.getName(), 90) + " - Rewards")
-            .content("Page " + (page + 1) + "/" + pageCount + " - " + rewards.size() + " available rewards");
+            .title(plain(title, 120))
+            .content(plain(pageText, 240));
 
         for (int index = from; index < to; index++) {
             Reward reward = rewards.get(index);
-            form.button(plain(reward.getName(), 100) + "\n" + plain(reward.getRarity().getName(), 60));
+            String entry = Replacer.create().replace(reward.replacePlaceholders()).apply(Lang.BEDROCK_FORM_REWARD_ENTRY.text());
+            form.button(plain(entry, 180));
         }
 
         int rewardButtonCount = to - from;
@@ -134,16 +153,16 @@ public final class BedrockManager {
         int nextButton = -1;
         if (page > 0) {
             previousButton = rewardButtonCount;
-            form.button("Previous page");
+            form.button(plain(Lang.BEDROCK_FORM_BUTTON_PREVIOUS.text(), 100));
         }
         if (page + 1 < pageCount) {
             nextButton = rewardButtonCount + (previousButton >= 0 ? 1 : 0);
-            form.button("Next page");
+            form.button(plain(Lang.BEDROCK_FORM_BUTTON_NEXT.text(), 100));
         }
         int backButton = rewardButtonCount + (previousButton >= 0 ? 1 : 0) + (nextButton >= 0 ? 1 : 0);
         int finalPreviousButton = previousButton;
         int finalNextButton = nextButton;
-        form.button("Back").validResultHandler(response -> {
+        form.button(plain(Lang.BEDROCK_FORM_BUTTON_BACK.text(), 100)).validResultHandler(response -> {
             int selected = response.clickedButtonId();
             if (selected < rewardButtonCount) {
                 Reward reward = rewards.get(from + selected);
@@ -161,9 +180,8 @@ public final class BedrockManager {
                                    @NotNull Reward reward,
                                    @Nullable Location source,
                                    int page) {
-        StringBuilder content = new StringBuilder("Rarity: ")
-            .append(plain(reward.getRarity().getName(), 80))
-            .append("\nChance: ").append(String.format(java.util.Locale.ROOT, "%.4f%%", reward.getRollChance()));
+        String details = Replacer.create().replace(reward.replacePlaceholders()).apply(Lang.BEDROCK_FORM_REWARD_DETAILS.text());
+        StringBuilder content = new StringBuilder(plain(details, 300));
         for (String line : reward.getDescription()) {
             content.append('\n').append(plain(line, 240));
             if (content.length() >= 1200) break;
@@ -172,7 +190,7 @@ public final class BedrockManager {
         SimpleForm form = SimpleForm.builder()
             .title(plain(reward.getName(), 120))
             .content(content.toString())
-            .button("Back to rewards")
+            .button(plain(Lang.BEDROCK_FORM_BUTTON_BACK_REWARDS.text(), 100))
             .validResultHandler(response -> this.runSync(player, () -> this.showRewards(player, crate, source, page)))
             .build();
         this.sendForm(player, form);
@@ -187,15 +205,18 @@ public final class BedrockManager {
             return;
         }
 
+        String title = Replacer.create().replace(crate.replacePlaceholders()).apply(Lang.BEDROCK_FORM_COST_TITLE.text());
         SimpleForm.Builder form = SimpleForm.builder()
-            .title(plain(crate.getName(), 90) + " - Select cost")
-            .content("Choose exactly one payment option. The server revalidates the cost before opening.");
+            .title(plain(title, 120))
+            .content(plain(Lang.BEDROCK_FORM_COST_DESCRIPTION.text(), 400));
         for (Cost cost : costs.stream().limit(32).toList()) {
-            String label = plain(cost.getName(), 80) + "\n" + plain(cost.formatInline(", "), 120);
-            form.button(label);
+            String label = Replacer.create().replace(cost.replacePlaceholders())
+                .replace(Placeholders.GENERIC_COSTS, () -> cost.formatInline(", "))
+                .apply(Lang.BEDROCK_FORM_COST_BUTTON.text());
+            form.button(plain(label, 220));
         }
         int displayedCosts = Math.min(costs.size(), 32);
-        form.button("Cancel").validResultHandler(response -> {
+        form.button(plain(Lang.BEDROCK_FORM_BUTTON_CANCEL.text(), 100)).validResultHandler(response -> {
             int selected = response.clickedButtonId();
             if (selected >= 0 && selected < displayedCosts) {
                 Cost cost = costs.get(selected);
@@ -220,9 +241,23 @@ public final class BedrockManager {
         return previous == null || now - previous >= ACTION_COOLDOWN_NANOS;
     }
 
+    private boolean consumeFormAction(@NotNull Player player) {
+        long now = System.nanoTime();
+        Long previous = this.formCooldowns.put(player.getUniqueId(), now);
+        return previous == null || now - previous >= FORM_COOLDOWN_NANOS;
+    }
+
     private void runSync(@NotNull Player player, @NotNull Runnable action) {
         this.plugin.getServer().getScheduler().runTask(this.plugin, () -> {
-            if (player.isOnline() && this.isBedrockPlayer(player)) action.run();
+            if (!player.isOnline() || !this.isBedrockPlayer(player)) return;
+
+            try {
+                action.run();
+            }
+            catch (RuntimeException | LinkageError exception) {
+                this.plugin.error("Bedrock crate form callback failed for '" + player.getName() + "'.");
+                exception.printStackTrace();
+            }
         });
     }
 
@@ -280,7 +315,8 @@ public final class BedrockManager {
     @NotNull
     private static String plain(@Nullable String input, int maximumLength) {
         if (input == null || input.isEmpty()) return "";
-        String bounded = input.substring(0, Math.min(input.length(), Math.max(1, maximumLength * 2)));
+        String withBreaks = input.replace(TagWrappers.BR, "\n");
+        String bounded = withBreaks.substring(0, Math.min(withBreaks.length(), Math.max(1, maximumLength * 2)));
         String stripped = bounded.replaceAll("(?i)§[0-9A-FK-ORX]", "")
             .replaceAll("<[^>]{1,96}>", "")
             .replace('\u0000', ' ');

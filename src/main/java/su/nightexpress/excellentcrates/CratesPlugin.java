@@ -145,9 +145,9 @@ public class CratesPlugin extends NightPlugin {
     @Override
     public void disable() {
         if (this.editorManager != null) this.editorManager.shutdown();
+        if (this.openingManager != null) this.openingManager.shutdown();
         if (this.displayManager != null) this.displayManager.shutdown();
         if (this.bedrockManager != null) this.bedrockManager.shutdown();
-        if (this.openingManager != null) this.openingManager.shutdown();
         if (this.keyManager != null) this.keyManager.shutdown();
         if (this.crateManager != null) this.crateManager.shutdown();
         //if (this.menuManager != null) this.menuManager.shutdown();

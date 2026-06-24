@@ -14,6 +14,7 @@ import org.bukkit.block.data.Rotatable;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.HandlerList;
@@ -45,6 +46,7 @@ import su.nightexpress.excellentcrates.bedrock.BedrockManager;
 import su.nightexpress.excellentcrates.config.Config;
 import su.nightexpress.excellentcrates.crate.CrateManager;
 import su.nightexpress.excellentcrates.crate.impl.Crate;
+import su.nightexpress.excellentcrates.crate.impl.CrateSource;
 import su.nightexpress.excellentcrates.hologram.HologramHandler;
 import su.nightexpress.excellentcrates.hologram.HologramManager;
 import su.nightexpress.excellentcrates.hologram.entity.FakeEntity;
@@ -55,6 +57,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -64,6 +67,7 @@ public final class CrateDisplayManager implements Listener {
 
     private static final int MAX_BLOCK_UPDATES_PER_SYNC = 2048;
     private static final int MAX_JAVA_DISPLAYS_PER_PLAYER = 2048;
+    private static final int MAX_DISPLAY_STATES_PER_PLAYER = 64;
     private static final long JAVA_RESYNC_TICKS = 40L;
     private static final long BEDROCK_RESYNC_TICKS = 100L;
 
@@ -77,12 +81,15 @@ public final class CrateDisplayManager implements Listener {
     private final Map<DisplayChunk, Set<WorldPos>> displaysByChunk;
     private final Map<UUID, Set<WorldPos>> packetViews;
     private final Map<UUID, Long> playerChunks;
+    private final Map<UUID, Map<WorldPos, DisplayState>> playerDisplayStates;
 
     private HologramHandler packetHandler;
     private boolean packetMode;
     private boolean packetFallbackPending;
     private BukkitTask javaResyncTask;
     private BukkitTask bedrockResyncTask;
+    private BukkitTask stateTickerTask;
+    private boolean shutdown;
 
     public CrateDisplayManager(@NotNull CratesPlugin plugin,
                                @NotNull CrateManager crateManager,
@@ -97,12 +104,14 @@ public final class CrateDisplayManager implements Listener {
         this.displaysByChunk = new HashMap<>();
         this.packetViews = new HashMap<>();
         this.playerChunks = new HashMap<>();
+        this.playerDisplayStates = new HashMap<>();
 
         this.packetHandler = plugin.getHologramManager().map(HologramManager::getPacketHandler).orElse(null);
         this.packetMode = Config.CRATE_PACKET_BASED_MODE.get() && this.packetHandler != null;
     }
 
     public void setup() {
+        this.shutdown = false;
         this.plugin.getPluginManager().registerEvents(this, this.plugin);
         this.cleanupStaleBukkitDisplays();
         this.crateManager.getCrates().forEach(this::spawnLoadedDisplays);
@@ -136,9 +145,11 @@ public final class CrateDisplayManager implements Listener {
     }
 
     public void shutdown() {
+        this.shutdown = true;
         HandlerList.unregisterAll(this);
         if (this.javaResyncTask != null) this.javaResyncTask.cancel();
         if (this.bedrockResyncTask != null) this.bedrockResyncTask.cancel();
+        if (this.stateTickerTask != null) this.stateTickerTask.cancel();
 
         this.plugin.getServer().getOnlinePlayers().forEach(this::restoreRealBlocks);
         new ArrayList<>(this.packetDisplays.keySet()).forEach(this::removeDisplay);
@@ -147,7 +158,165 @@ public final class CrateDisplayManager implements Listener {
         this.displaysByChunk.clear();
         this.packetViews.clear();
         this.playerChunks.clear();
+        this.playerDisplayStates.clear();
         this.packetHandler = null;
+    }
+
+    /** Switches only the opening player to the configured opening model/block for the physical source. */
+    public void beginOpening(@NotNull Player player, @NotNull CrateSource source) {
+        this.setOpeningState(player, source, DisplayPhase.OPENING);
+    }
+
+    /** Shows the closing phase after authoritative reward delivery, then returns the player to idle. */
+    public void completeOpening(@NotNull Player player, @NotNull CrateSource source) {
+        if (this.shutdown) return;
+        if (!Bukkit.isPrimaryThread()) {
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.completeOpening(player, source));
+            return;
+        }
+
+        WorldPos pos = source.getBlockPos();
+        Crate crate = source.getCrate();
+        if (pos == null || !this.isOwnedDisplay(crate, pos)) return;
+
+        boolean hasClosing = this.isBedrock(player)
+            ? !crate.getBedrockClosingBlock().isBlank()
+            : crate.getJavaClosingModel().isEnabled();
+        if (!hasClosing || crate.getClosingModelDurationTicks() <= 0) {
+            this.clearOpeningState(player, pos);
+            return;
+        }
+
+        this.putDisplayState(player, pos, new DisplayState(crate.getId(), DisplayPhase.CLOSING, crate.getClosingModelDurationTicks()));
+        this.updateStateDisplay(player, pos);
+        this.ensureStateTicker();
+    }
+
+    /** Returns a cancelled/refunded opening to idle without displaying the successful closing phase. */
+    public void cancelOpening(@NotNull Player player, @NotNull CrateSource source) {
+        if (this.shutdown) return;
+        if (!Bukkit.isPrimaryThread()) {
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.cancelOpening(player, source));
+            return;
+        }
+        WorldPos pos = source.getBlockPos();
+        if (pos != null) this.clearOpeningState(player, pos);
+    }
+
+    private void setOpeningState(@NotNull Player player, @NotNull CrateSource source, @NotNull DisplayPhase phase) {
+        if (this.shutdown) return;
+        if (!Bukkit.isPrimaryThread()) {
+            this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.setOpeningState(player, source, phase));
+            return;
+        }
+
+        WorldPos pos = source.getBlockPos();
+        Crate crate = source.getCrate();
+        if (pos == null || !this.isOwnedDisplay(crate, pos)) return;
+        this.putDisplayState(player, pos, new DisplayState(crate.getId(), phase, -1));
+        this.updateStateDisplay(player, pos);
+    }
+
+    private void putDisplayState(@NotNull Player player, @NotNull WorldPos pos, @NotNull DisplayState state) {
+        Map<WorldPos, DisplayState> states = this.playerDisplayStates.computeIfAbsent(player.getUniqueId(), key -> new LinkedHashMap<>());
+        if (!states.containsKey(pos) && states.size() >= MAX_DISPLAY_STATES_PER_PLAYER) {
+            WorldPos oldest = states.keySet().iterator().next();
+            states.remove(oldest);
+            this.updateStateDisplay(player, oldest);
+        }
+        states.put(pos, state);
+    }
+
+    private boolean isOwnedDisplay(@NotNull Crate crate, @NotNull WorldPos pos) {
+        return crate.isDisplayEnabled() && crate.getId().equals(this.displayOwners.get(pos));
+    }
+
+    private void clearOpeningState(@NotNull Player player, @NotNull WorldPos pos) {
+        Map<WorldPos, DisplayState> states = this.playerDisplayStates.get(player.getUniqueId());
+        if (states == null || states.remove(pos) == null) return;
+        if (states.isEmpty()) this.playerDisplayStates.remove(player.getUniqueId());
+        this.updateStateDisplay(player, pos);
+    }
+
+    private void ensureStateTicker() {
+        if (this.stateTickerTask != null || this.shutdown) return;
+        this.stateTickerTask = this.plugin.getServer().getScheduler().runTaskTimer(this.plugin, this::tickDisplayStates, 1L, 1L);
+    }
+
+    private void tickDisplayStates() {
+        List<StateTarget> expired = new ArrayList<>();
+        this.playerDisplayStates.forEach((playerId, states) -> states.replaceAll((pos, state) -> {
+            if (state.phase() != DisplayPhase.CLOSING) return state;
+            int remaining = state.remainingTicks() - 1;
+            if (remaining <= 0) {
+                expired.add(new StateTarget(playerId, pos));
+                return null;
+            }
+            return new DisplayState(state.crateId(), state.phase(), remaining);
+        }));
+        this.playerDisplayStates.values().forEach(states -> states.values().removeIf(java.util.Objects::isNull));
+        this.playerDisplayStates.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+
+        expired.forEach(target -> {
+            Player player = this.plugin.getServer().getPlayer(target.playerId());
+            if (player != null) this.updateStateDisplay(player, target.pos());
+        });
+
+        boolean hasClosing = this.playerDisplayStates.values().stream()
+            .flatMap(states -> states.values().stream())
+            .anyMatch(state -> state.phase() == DisplayPhase.CLOSING);
+        if (!hasClosing && this.stateTickerTask != null) {
+            this.stateTickerTask.cancel();
+            this.stateTickerTask = null;
+        }
+    }
+
+    private void updateStateDisplay(@NotNull Player player, @NotNull WorldPos pos) {
+        if (!player.isOnline()) return;
+        if (this.isBedrock(player)) {
+            this.syncBedrockBlock(player, pos);
+            return;
+        }
+        if (!this.packetMode) {
+            this.updateBukkitModel(pos);
+            return;
+        }
+        if (this.packetHandler == null) return;
+
+        FakeEntityGroup group = this.packetDisplays.get(pos);
+        Crate crate = this.getOwner(pos);
+        if (group == null || crate == null || group.getEntities().isEmpty()) return;
+        if (!group.isViewer(player)) {
+            this.syncJavaModels(player);
+            return;
+        }
+
+        try {
+            this.packetHandler.sendItemDisplayPackets(player, group.getEntities().getFirst(), false,
+                this.getJavaDisplayItem(player, crate, pos), (float) crate.getJavaDisplayScale());
+        }
+        catch (RuntimeException | LinkageError exception) {
+            this.requestPacketFallback(exception);
+        }
+    }
+
+    private void updateBukkitModel(@NotNull WorldPos pos) {
+        UUID entityId = this.bukkitDisplays.get(pos);
+        Crate crate = this.getOwner(pos);
+        if (entityId == null || crate == null) return;
+        Entity entity = this.plugin.getServer().getEntity(entityId);
+        if (!(entity instanceof ItemDisplay display)) return;
+
+        DisplayPhase phase = this.playerDisplayStates.values().stream()
+            .map(states -> states.get(pos))
+            .filter(java.util.Objects::nonNull)
+            .filter(state -> state.crateId().equals(crate.getId()))
+            .map(DisplayState::phase)
+            .min(java.util.Comparator.comparingInt(value -> value == DisplayPhase.OPENING ? 0 : 1))
+            .orElse(null);
+        display.setItemStack(phase == DisplayPhase.OPENING
+            ? crate.getJavaOpeningDisplayItem()
+            : phase == DisplayPhase.CLOSING ? crate.getJavaClosingDisplayItem() : crate.getJavaDisplayItem());
     }
 
     public void refresh(@NotNull Crate crate) {
@@ -283,7 +452,8 @@ public final class CrateDisplayManager implements Listener {
                 continue;
             }
             try {
-                this.packetHandler.sendItemDisplayPackets(player, entity, true, crate.getJavaDisplayItem(), (float) crate.getJavaDisplayScale());
+                this.packetHandler.sendItemDisplayPackets(player, entity, true,
+                    this.getJavaDisplayItem(player, crate, pos), (float) crate.getJavaDisplayScale());
                 group.addViewer(player);
                 current.add(pos);
             }
@@ -329,6 +499,24 @@ public final class CrateDisplayManager implements Listener {
             && location.distanceSquared(player.getLocation()) <= (double) radius * radius;
     }
 
+    @NotNull
+    private ItemStack getJavaDisplayItem(@NotNull Player player, @NotNull Crate crate, @NotNull WorldPos pos) {
+        DisplayState state = this.getDisplayState(player, crate, pos);
+        if (state == null) return crate.getJavaDisplayItem();
+        return switch (state.phase()) {
+            case OPENING -> crate.getJavaOpeningDisplayItem();
+            case CLOSING -> crate.getJavaClosingDisplayItem();
+        };
+    }
+
+    @Nullable
+    private DisplayState getDisplayState(@NotNull Player player, @NotNull Crate crate, @NotNull WorldPos pos) {
+        Map<WorldPos, DisplayState> states = this.playerDisplayStates.get(player.getUniqueId());
+        if (states == null) return null;
+        DisplayState state = states.get(pos);
+        return state != null && state.crateId().equals(crate.getId()) ? state : null;
+    }
+
     private void removePacketViewer(@NotNull Player player, @NotNull WorldPos pos, @NotNull FakeEntityGroup group) {
         if (!group.isViewer(player)) return;
         group.removeViewer(player);
@@ -346,6 +534,8 @@ public final class CrateDisplayManager implements Listener {
     }
 
     private void removeDisplay(@NotNull WorldPos pos) {
+        this.playerDisplayStates.values().forEach(states -> states.remove(pos));
+        this.playerDisplayStates.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         FakeEntityGroup packetGroup = this.packetDisplays.remove(pos);
         if (packetGroup != null) this.destroyPacketGroup(pos, packetGroup);
 
@@ -399,6 +589,7 @@ public final class CrateDisplayManager implements Listener {
         this.displaysByChunk.clear();
         this.packetViews.clear();
         this.crateManager.getCrates().forEach(this::spawnLoadedDisplays);
+        this.playerDisplayStates.values().stream().flatMap(states -> states.keySet().stream()).distinct().forEach(this::updateBukkitModel);
         this.plugin.getServer().getOnlinePlayers().forEach(this::updateBukkitVisibility);
     }
 
@@ -431,10 +622,17 @@ public final class CrateDisplayManager implements Listener {
                 if (location == null || location.getWorld() != player.getWorld() || !pos.isChunkLoaded()) continue;
                 if (location.distanceSquared(player.getLocation()) > maximumDistance) continue;
 
-                player.sendBlockChange(location, this.createBedrockData(crate, pos));
+                player.sendBlockChange(location, this.createBedrockData(player, crate, pos));
                 updates++;
             }
         }
+    }
+
+    private void syncBedrockBlock(@NotNull Player player, @NotNull WorldPos pos) {
+        Crate crate = this.getOwner(pos);
+        Location location = pos.toLocation();
+        if (crate == null || location == null || location.getWorld() != player.getWorld() || !pos.isChunkLoaded()) return;
+        player.sendBlockChange(location, this.createBedrockData(player, crate, pos));
     }
 
     private void restoreRealBlocks(@NotNull Player player) {
@@ -454,17 +652,33 @@ public final class CrateDisplayManager implements Listener {
     }
 
     @NotNull
-    private BlockData createBedrockData(@NotNull Crate crate, @NotNull WorldPos pos) {
+    private BlockData createBedrockData(@NotNull Player player, @NotNull Crate crate, @NotNull WorldPos pos) {
+        String idleBlock = crate.getBedrockIdleBlock();
+        String configuredBlock = idleBlock;
+        DisplayState state = this.getDisplayState(player, crate, pos);
+        if (state != null) {
+            String phaseBlock = state.phase() == DisplayPhase.OPENING
+                ? crate.getBedrockOpeningBlock()
+                : crate.getBedrockClosingBlock();
+            if (!phaseBlock.isBlank()) configuredBlock = phaseBlock;
+        }
+
         BlockData data;
         try {
-            Material material = Material.matchMaterial(crate.getBedrockBlock());
+            Material material = Material.matchMaterial(configuredBlock);
             data = material != null && material.isBlock() && !material.isAir()
                 ? material.createBlockData()
-                : Bukkit.createBlockData(crate.getBedrockBlock());
+                : Bukkit.createBlockData(configuredBlock);
             if (data.getMaterial().isAir()) throw new IllegalArgumentException("air is not a display block");
         }
         catch (IllegalArgumentException exception) {
-            data = Material.CHEST.createBlockData();
+            try {
+                data = Bukkit.createBlockData(idleBlock);
+                if (data.getMaterial().isAir()) data = Material.CHEST.createBlockData();
+            }
+            catch (IllegalArgumentException ignored) {
+                data = Material.CHEST.createBlockData();
+            }
         }
 
         BlockFace facing = crate.getDisplayFacing(pos);
@@ -490,6 +704,8 @@ public final class CrateDisplayManager implements Listener {
         this.playerChunks.remove(uuid);
         this.plugin.setResourcePackLoaded(uuid, false);
         this.packetViews.remove(uuid);
+        Map<WorldPos, DisplayState> removedStates = this.playerDisplayStates.remove(uuid);
+        if (!this.packetMode && removedStates != null) removedStates.keySet().forEach(this::updateBukkitModel);
         this.packetDisplays.values().forEach(group -> group.removeViewer(player));
         if (this.bedrockManager != null) this.bedrockManager.forgetPlayer(uuid);
     }
@@ -625,5 +841,18 @@ public final class CrateDisplayManager implements Listener {
         private static DisplayChunk from(@NotNull WorldPos pos) {
             return new DisplayChunk(pos.getWorldName(), pos.getX() >> 4, pos.getZ() >> 4);
         }
+    }
+
+    private enum DisplayPhase {
+        OPENING,
+        CLOSING
+    }
+
+    private record DisplayState(@NotNull String crateId, @NotNull DisplayPhase phase, int remainingTicks) {
+
+    }
+
+    private record StateTarget(@NotNull UUID playerId, @NotNull WorldPos pos) {
+
     }
 }

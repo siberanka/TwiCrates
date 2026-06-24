@@ -50,6 +50,12 @@ public class RewardContentMenu extends LinkedMenu<CratesPlugin, ItemReward> impl
         .appendClick("Click to toggle")
         .build();
 
+    private static final IconLocale LOCALE_CRAFTENGINE = LangEntry.iconBuilder("Editor.Button.Reward.CraftEngineItems")
+        .name("CraftEngine Items")
+        .appendInfo("Add reward content directly", "from CraftEngine custom items.").br()
+        .appendClick("Click to browse")
+        .build();
+
     private final DialogRegistry dialogs;
 
     public RewardContentMenu(@NotNull CratesPlugin plugin, @NotNull DialogRegistry dialogs) {
@@ -115,6 +121,12 @@ public class RewardContentMenu extends LinkedMenu<CratesPlugin, ItemReward> impl
                 reward.setAllowItemPlaceholders(!reward.isAllowItemPlaceholders());
                 reward.getCrate().markDirty();
                 this.runNextTick(() -> this.flush(player));
+            }).build()
+        );
+
+        viewer.addItem(NightItem.fromType(Material.KNOWLEDGE_BOOK).localized(LOCALE_CRAFTENGINE)
+            .toMenuItem().setSlots(5).setHandler((viewer1, event) -> {
+                this.runNextTick(() -> this.plugin.getEditorManager().openCraftEngineRewardBrowser(player, reward));
             }).build()
         );
     }

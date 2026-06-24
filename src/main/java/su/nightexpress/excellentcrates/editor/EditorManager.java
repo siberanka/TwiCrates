@@ -28,6 +28,8 @@ public class EditorManager extends AbstractManager<CratesPlugin> {
     private RewardListMenu      rewardListMenu;
     private RewardOptionsMenu   rewardOptionsMenu;
     private RewardContentMenu rewardContentMenu;
+    private CrateModelBrowserMenu crateModelBrowserMenu;
+    private CraftEngineItemBrowserMenu craftEngineItemBrowserMenu;
 
     private KeyListMenu    keyListMenu;
     private KeyOptionsMenu keyOptionsMenu;
@@ -49,6 +51,8 @@ public class EditorManager extends AbstractManager<CratesPlugin> {
         this.rewardListMenu = new RewardListMenu(this.plugin, this.dialogs);
         this.rewardOptionsMenu = new RewardOptionsMenu(this.plugin, this.dialogs);
         this.rewardContentMenu = new RewardContentMenu(this.plugin, this.dialogs);
+        this.crateModelBrowserMenu = new CrateModelBrowserMenu(this.plugin);
+        this.craftEngineItemBrowserMenu = new CraftEngineItemBrowserMenu(this.plugin);
 
         this.keyListMenu = new KeyListMenu(this.plugin, this.dialogs);
         this.keyOptionsMenu = new KeyOptionsMenu(this.plugin, this.dialogs);
@@ -64,6 +68,8 @@ public class EditorManager extends AbstractManager<CratesPlugin> {
         if (this.rewardListMenu != null) this.rewardListMenu.clear();
         if (this.rewardOptionsMenu != null) this.rewardOptionsMenu.clear();
         if (this.rewardContentMenu != null) this.rewardContentMenu.clear();
+        if (this.crateModelBrowserMenu != null) this.crateModelBrowserMenu.clear();
+        if (this.craftEngineItemBrowserMenu != null) this.craftEngineItemBrowserMenu.clear();
 
         if (this.keyListMenu != null) this.keyListMenu.clear();
         if (this.keyOptionsMenu != null) this.keyOptionsMenu.clear();
@@ -103,6 +109,18 @@ public class EditorManager extends AbstractManager<CratesPlugin> {
 
     public void openRewardContent(@NotNull Player player, @NotNull ItemReward reward) {
         this.rewardContentMenu.open(player, reward);
+    }
+
+    public void openCrateModelBrowser(@NotNull Player player, @NotNull Crate crate) {
+        this.crateModelBrowserMenu.open(player, crate);
+    }
+
+    public void openCraftEngineBaseBrowser(@NotNull Player player, @NotNull Crate crate) {
+        this.craftEngineItemBrowserMenu.openBase(player, crate);
+    }
+
+    public void openCraftEngineRewardBrowser(@NotNull Player player, @NotNull ItemReward reward) {
+        this.craftEngineItemBrowserMenu.openReward(player, reward);
     }
 
     public void openRewardOptions(@NotNull Player player, @NotNull Reward reward) {

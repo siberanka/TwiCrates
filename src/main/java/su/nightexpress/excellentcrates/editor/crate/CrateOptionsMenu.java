@@ -161,6 +161,23 @@ public class CrateOptionsMenu extends LinkedMenu<CratesPlugin, Crate> implements
         .appendClick("Click to edit")
         .build();
 
+    private static final IconLocale LOCALE_PLATFORM_DISPLAY = LangEntry.iconBuilder("Editor.Button.Crate.Platform-Display").name("Java & Bedrock Display")
+        .appendCurrent("State", GENERIC_STATE)
+        .appendCurrent("Reward Delay", GENERIC_TIME).br()
+        .appendInfo("Configure idle, opening and closing", "models/blocks for both platforms.").br()
+        .appendClick("Click to edit")
+        .build();
+
+    private static final IconLocale LOCALE_MODEL_BROWSER = LangEntry.iconBuilder("Editor.Button.Crate.Model-Browser").name("External Model Browser")
+        .appendInfo("Select crate display models from", "BetterModel, ModelEngine or MythicMobs.").br()
+        .appendClick("Click to open")
+        .build();
+
+    private static final IconLocale LOCALE_CRAFTENGINE_BASE = LangEntry.iconBuilder("Editor.Button.Crate.CraftEngine-Base").name("CraftEngine Base Item")
+        .appendInfo("Select the crate item directly", "from CraftEngine custom items.").br()
+        .appendClick("Click to open")
+        .build();
+
     private final DialogRegistry dialogs;
 
     public CrateOptionsMenu(@NotNull CratesPlugin plugin, @NotNull DialogRegistry dialogs) {
@@ -374,6 +391,31 @@ public class CrateOptionsMenu extends LinkedMenu<CratesPlugin, Crate> implements
             )
             .toMenuItem().setSlots(40).setHandler((viewer1, event) -> {
                 this.dialogs.show(player, CrateDialogs.CRATE_POST_OPEN_COMMANDS, crate, flush);
+            }).build()
+        );
+
+        viewer.addItem(NightItem.fromType(Material.ITEM_FRAME)
+            .localized(LOCALE_PLATFORM_DISPLAY)
+            .replacement(replacer -> replacer
+                .replace(GENERIC_STATE, () -> CoreLang.STATE_ENABLED_DISALBED.get(crate.isDisplayEnabled()))
+                .replace(GENERIC_TIME, () -> Lang.OTHER_TICKS.text().replace(GENERIC_AMOUNT, String.valueOf(crate.getRewardDeliveryDelayTicks())))
+            )
+            .toMenuItem().setSlots(39).setHandler((viewer1, event) -> {
+                this.dialogs.show(player, CrateDialogs.CRATE_DISPLAY, crate, flush);
+            }).build()
+        );
+
+        viewer.addItem(NightItem.fromType(Material.ARMOR_STAND)
+            .localized(LOCALE_MODEL_BROWSER)
+            .toMenuItem().setSlots(41).setHandler((viewer1, event) -> {
+                this.runNextTick(() -> this.plugin.getEditorManager().openCrateModelBrowser(player, crate));
+            }).build()
+        );
+
+        viewer.addItem(NightItem.fromType(Material.KNOWLEDGE_BOOK)
+            .localized(LOCALE_CRAFTENGINE_BASE)
+            .toMenuItem().setSlots(17).setHandler((viewer1, event) -> {
+                this.runNextTick(() -> this.plugin.getEditorManager().openCraftEngineBaseBrowser(player, crate));
             }).build()
         );
     }

@@ -11,4 +11,8 @@ softdepend:
   - packetevents
   - Geyser-Spigot
   - floodgate
+  - BetterModel
+  - ModelEngine
+  - MythicMobs
+  - CraftEngine
 api-version: 1.21

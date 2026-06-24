@@ -27,14 +27,21 @@ public class CrateOpeningDialog extends Dialog<Crate> {
         "Select an opening animation for the crate.",
         "You can create and edit animations in the " + SOFT_YELLOW.wrap(Config.DIR_OPENINGS) + " directory.",
         "",
+        SOFT_YELLOW.wrap("Reward Delivery Delay") + " is the minimum opening duration in server ticks (20 ticks = 1 second). Longer provider animations are never cut short.",
+        SOFT_YELLOW.wrap("Closing Model Duration") + " controls how long the closing model/block remains after rewards are delivered.",
+        "",
         SOFT_YELLOW.wrap("→ ") + "To disable crate opening animation, uncheck the " + SOFT_YELLOW.wrap("Enabled") + " box."
     );
 
     private static final TextLocale INPUT_ENABLED = LangEntry.builder("Dialog.Crate.Opening.Input.Enabled").text("Enabled");
     private static final TextLocale INPUT_OPENING = LangEntry.builder("Dialog.Crate.Opening.Input.Opening").text(SOFT_YELLOW.wrap("Opening"));
+    private static final TextLocale INPUT_REWARD_DELAY = LangEntry.builder("Dialog.Crate.Opening.Input.RewardDeliveryDelay").text("Reward Delivery Delay " + GRAY.wrap("(ticks, 0..12000)"));
+    private static final TextLocale INPUT_CLOSING_DURATION = LangEntry.builder("Dialog.Crate.Opening.Input.ClosingModelDuration").text("Closing Model Duration " + GRAY.wrap("(ticks, 0..1200)"));
 
     private static final String JSON_ENABLED = "enabled";
     private static final String JSON_ID      = "id";
+    private static final String JSON_REWARD_DELAY = "reward_delivery_delay";
+    private static final String JSON_CLOSING_DURATION = "closing_model_duration";
 
     private final CratesPlugin plugin;
 
@@ -56,7 +63,9 @@ public class CrateOpeningDialog extends Dialog<Crate> {
                 .body(DialogBodies.plainMessage(BODY))
                 .inputs(
                     DialogInputs.bool(JSON_ENABLED, INPUT_ENABLED).initial(crate.isOpeningEnabled()).build(),
-                    DialogInputs.singleOption(JSON_ID, INPUT_OPENING, entries).build()
+                    DialogInputs.singleOption(JSON_ID, INPUT_OPENING, entries).build(),
+                    DialogInputs.text(JSON_REWARD_DELAY, INPUT_REWARD_DELAY).initial(String.valueOf(crate.getRewardDeliveryDelayTicks())).maxLength(5).build(),
+                    DialogInputs.text(JSON_CLOSING_DURATION, INPUT_CLOSING_DURATION).initial(String.valueOf(crate.getClosingModelDurationTicks())).maxLength(4).build()
                 )
                 .build()
             );
@@ -71,6 +80,8 @@ public class CrateOpeningDialog extends Dialog<Crate> {
 
                 crate.setOpeningEnabled(enabled);
                 crate.setOpeningId(id);
+                crate.setRewardDeliveryDelayTicks(nbtHolder.getInt(JSON_REWARD_DELAY, crate.getRewardDeliveryDelayTicks()));
+                crate.setClosingModelDurationTicks(nbtHolder.getInt(JSON_CLOSING_DURATION, crate.getClosingModelDurationTicks()));
                 crate.markDirty();
                 viewer.callback();
             });

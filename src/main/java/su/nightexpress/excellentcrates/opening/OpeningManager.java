@@ -27,6 +27,7 @@ public class OpeningManager extends AbstractManager<CratesPlugin> {
     private final Map<UUID, Opening>           openingByPlayerMap;
 
     private final DummyProvider dummyProvider;
+    private static final long MAX_OPENING_LIFETIME_TICKS = 20L * 60L * 30L;
 
     public OpeningManager(@NotNull CratesPlugin plugin) {
         super(plugin);
@@ -47,7 +48,10 @@ public class OpeningManager extends AbstractManager<CratesPlugin> {
 
     @Override
     protected void onShutdown() {
-        this.getOpenings().forEach(Opening::stop);
+        this.getOpenings().forEach(opening -> {
+            if (opening instanceof AbstractOpening nativeOpening) nativeOpening.forceStop();
+            else opening.stop();
+        });
         this.providerByIdMap.clear();
         this.openingByPlayerMap.clear();
     }
@@ -152,7 +156,27 @@ public class OpeningManager extends AbstractManager<CratesPlugin> {
     }
 
     public void tickOpenings() {
-        this.getOpenings().forEach(Opening::tick);
+        this.getOpenings().forEach(opening -> {
+            Player player = opening.getPlayer();
+            if (!player.isOnline()) {
+                this.stopOpening(player);
+                return;
+            }
+            if (opening.getTickCount() > MAX_OPENING_LIFETIME_TICKS) {
+                this.plugin.warn("Force-stopping stuck crate opening for '" + player.getName() + "' at " + opening.getSource() + ".");
+                this.stopOpening(player);
+                return;
+            }
+
+            try {
+                opening.tick();
+            }
+            catch (RuntimeException | LinkageError exception) {
+                this.plugin.error("Crate opening tick failed for '" + player.getName() + "'. The opening was cancelled safely.");
+                exception.printStackTrace();
+                this.stopOpening(player);
+            }
+        });
     }
 
     public boolean isOpening(@NotNull Player player) {
@@ -163,7 +187,8 @@ public class OpeningManager extends AbstractManager<CratesPlugin> {
         Opening opening = this.removeOpening(player);
         if (opening == null) return;
 
-        opening.stop();
+        if (opening instanceof AbstractOpening nativeOpening) nativeOpening.forceStop();
+        else opening.stop();
     }
 
     @Nullable
@@ -189,10 +214,25 @@ public class OpeningManager extends AbstractManager<CratesPlugin> {
     }
 
     public void startOpening(@NotNull Player player, @NotNull Opening opening, boolean instaRoll) {
-        this.openingByPlayerMap.putIfAbsent(player.getUniqueId(), opening);
+        this.tryStartOpening(player, opening, instaRoll);
+    }
 
-        opening.start(); // Start ticking
+    public boolean tryStartOpening(@NotNull Player player, @NotNull Opening opening, boolean instaRoll) {
+        if (this.openingByPlayerMap.putIfAbsent(player.getUniqueId(), opening) != null) return false;
 
-        if (instaRoll) opening.instaRoll();
+        try {
+            opening.start(); // Start ticking
+
+            if (instaRoll) {
+                if (opening instanceof AbstractOpening nativeOpening) nativeOpening.bypassCompletionDelay();
+                opening.instaRoll();
+            }
+            return true;
+        }
+        catch (RuntimeException | LinkageError exception) {
+            this.openingByPlayerMap.remove(player.getUniqueId(), opening);
+            this.plugin.getDisplayManager().ifPresent(manager -> manager.cancelOpening(player, opening.getSource()));
+            throw exception;
+        }
     }
 }

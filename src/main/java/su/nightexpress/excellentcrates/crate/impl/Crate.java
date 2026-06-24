@@ -2,13 +2,11 @@ package su.nightexpress.excellentcrates.crate.impl;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import su.nightexpress.excellentcrates.CratesPlugin;
@@ -30,6 +28,7 @@ import su.nightexpress.excellentcrates.crate.reward.RewardFactory;
 import su.nightexpress.excellentcrates.data.crate.GlobalCrateData;
 import su.nightexpress.excellentcrates.hologram.HologramManager;
 import su.nightexpress.excellentcrates.hologram.HologramTemplate;
+import su.nightexpress.excellentcrates.display.JavaCrateModel;
 import su.nightexpress.excellentcrates.registry.CratesRegistries;
 import su.nightexpress.excellentcrates.util.CrateUtils;
 import su.nightexpress.excellentcrates.util.ItemHelper;
@@ -103,17 +102,22 @@ public class Crate implements ConfigBacked {
 
     private boolean  displayEnabled;
     private boolean  javaDisplayEnabled;
-    private Material javaDisplayMaterial;
-    private int      javaDisplayCustomModelData;
-    private String   javaDisplayItemModel;
+    private final JavaCrateModel javaIdleModel;
+    private final JavaCrateModel javaOpeningModel;
+    private final JavaCrateModel javaClosingModel;
     private double   javaDisplayScale;
     private double   javaDisplayYOffset;
     private double   javaDisplayYawOffset;
     private boolean  javaDisplayRequirePack;
     private boolean  bedrockDisplayEnabled;
-    private String   bedrockBlock;
+    private String   bedrockIdleBlock;
+    private String   bedrockOpeningBlock;
+    private String   bedrockClosingBlock;
     private boolean  bedrockFormsEnabled;
     private BlockFace defaultDisplayFacing;
+
+    private int rewardDeliveryDelayTicks;
+    private int closingModelDurationTicks;
 
     private List<String> postOpenCommands;
 
@@ -130,11 +134,15 @@ public class Crate implements ConfigBacked {
         this.blockFacings = new HashMap<>();
         this.milestones = new HashSet<>();
         this.description = new ArrayList<>();
-        this.javaDisplayMaterial = Material.PAPER;
-        this.javaDisplayItemModel = "";
+        this.javaIdleModel = new JavaCrateModel(true, Material.PAPER, 0, "");
+        this.javaOpeningModel = new JavaCrateModel(false, Material.PAPER, 0, "");
+        this.javaClosingModel = new JavaCrateModel(false, Material.PAPER, 0, "");
         this.javaDisplayScale = 1D;
         this.javaDisplayYOffset = 0.5D;
-        this.bedrockBlock = "CHEST";
+        this.bedrockIdleBlock = "CHEST";
+        this.bedrockOpeningBlock = "";
+        this.bedrockClosingBlock = "";
+        this.closingModelDurationTicks = 20;
         this.defaultDisplayFacing = BlockFace.SOUTH;
         this.javaDisplayEnabled = true;
         this.bedrockDisplayEnabled = true;
@@ -272,17 +280,26 @@ public class Crate implements ConfigBacked {
 
         this.setDisplayEnabled(config.getBoolean("Block.Display.Enabled", false));
         this.setJavaDisplayEnabled(config.getBoolean("Block.Display.Java.Enabled", true));
-        this.setJavaDisplayMaterial(parseDisplayMaterial(config.getString("Block.Display.Java.Model.Material", "PAPER")));
-        this.setJavaDisplayCustomModelData(config.getInt("Block.Display.Java.Model.Custom_Model_Data", 0));
-        this.setJavaDisplayItemModel(config.getString("Block.Display.Java.Model.Item_Model", ""));
+        String idleModelPath = config.contains("Block.Display.Java.Models.Idle.Material")
+            ? "Block.Display.Java.Models.Idle"
+            : "Block.Display.Java.Model";
+        this.readJavaModel(config, idleModelPath, this.javaIdleModel, true);
+        this.javaIdleModel.setEnabled(true);
+        this.readJavaModel(config, "Block.Display.Java.Models.Opening", this.javaOpeningModel, false);
+        this.readJavaModel(config, "Block.Display.Java.Models.Closing", this.javaClosingModel, false);
         this.setJavaDisplayScale(config.getDouble("Block.Display.Java.Scale", 1D));
         this.setJavaDisplayYOffset(config.getDouble("Block.Display.Java.Y_Offset", 0.5D));
         this.setJavaDisplayYawOffset(config.getDouble("Block.Display.Java.Yaw_Offset", 0D));
         this.setJavaDisplayRequirePack(config.getBoolean("Block.Display.Java.Require_Accepted_Resource_Pack", false));
         this.setBedrockDisplayEnabled(config.getBoolean("Block.Display.Bedrock.Enabled", true));
-        this.setBedrockBlock(config.getString("Block.Display.Bedrock.Block", "CHEST"));
+        this.setBedrockIdleBlock(config.getString("Block.Display.Bedrock.Blocks.Idle",
+            config.getString("Block.Display.Bedrock.Block", "CHEST")));
+        this.setBedrockOpeningBlock(config.getString("Block.Display.Bedrock.Blocks.Opening", ""));
+        this.setBedrockClosingBlock(config.getString("Block.Display.Bedrock.Blocks.Closing", ""));
         this.setBedrockFormsEnabled(config.getBoolean("Block.Display.Bedrock.Forms.Enabled", true));
         this.setDefaultDisplayFacing(parseCardinalFace(config.getString("Block.Display.Default_Facing", "SOUTH"), BlockFace.SOUTH));
+        this.setRewardDeliveryDelayTicks(config.getInt("Animation.Reward_Delivery_Delay_Ticks", 0));
+        this.setClosingModelDurationTicks(config.getInt("Animation.Closing_Model_Duration_Ticks", 20));
 
         config.getStringList("Block.Display.Facings").stream().limit(MAX_BLOCK_POSITIONS).forEach(serialized -> {
             int separator = serialized.lastIndexOf(',');
@@ -310,6 +327,8 @@ public class Crate implements ConfigBacked {
         }
 
         // Persist normalized defaults and the operator-facing comments on first load/reload.
+        config.set("Animation.Reward_Delivery_Delay_Ticks", this.rewardDeliveryDelayTicks);
+        config.set("Animation.Closing_Model_Duration_Ticks", this.closingModelDurationTicks);
         this.writeDisplaySettings(config);
     }
 
@@ -342,6 +361,8 @@ public class Crate implements ConfigBacked {
         config.set("Preview.Id", this.previewId);
         config.set("Animation.Enabled", this.openingEnabled);
         config.set("Animation.Id", this.openingId);
+        config.set("Animation.Reward_Delivery_Delay_Ticks", this.rewardDeliveryDelayTicks);
+        config.set("Animation.Closing_Model_Duration_Ticks", this.closingModelDurationTicks);
 
         config.set("OpeningCooldown.Enabled", this.openingCooldownEnabled);
         config.set("OpeningCooldown.Value", this.openingCooldownTime);
@@ -374,17 +395,46 @@ public class Crate implements ConfigBacked {
             .sorted()
             .toList());
         config.set("Block.Display.Java.Enabled", this.javaDisplayEnabled);
-        config.set("Block.Display.Java.Model.Material", this.javaDisplayMaterial.name());
-        config.set("Block.Display.Java.Model.Custom_Model_Data", this.javaDisplayCustomModelData);
-        config.set("Block.Display.Java.Model.Item_Model", this.javaDisplayItemModel.isBlank() ? null : this.javaDisplayItemModel);
+        config.remove("Block.Display.Java.Model");
+        this.writeJavaModel(config, "Block.Display.Java.Models.Idle", this.javaIdleModel, false);
+        this.writeJavaModel(config, "Block.Display.Java.Models.Opening", this.javaOpeningModel, true);
+        this.writeJavaModel(config, "Block.Display.Java.Models.Closing", this.javaClosingModel, true);
         config.set("Block.Display.Java.Scale", this.javaDisplayScale);
         config.set("Block.Display.Java.Y_Offset", this.javaDisplayYOffset);
         config.set("Block.Display.Java.Yaw_Offset", this.javaDisplayYawOffset);
         config.set("Block.Display.Java.Require_Accepted_Resource_Pack", this.javaDisplayRequirePack);
         config.set("Block.Display.Bedrock.Enabled", this.bedrockDisplayEnabled);
-        config.set("Block.Display.Bedrock.Block", this.bedrockBlock);
+        config.remove("Block.Display.Bedrock.Block");
+        config.set("Block.Display.Bedrock.Blocks.Idle", this.bedrockIdleBlock);
+        config.set("Block.Display.Bedrock.Blocks.Opening", this.bedrockOpeningBlock.isBlank() ? null : this.bedrockOpeningBlock);
+        config.set("Block.Display.Bedrock.Blocks.Closing", this.bedrockClosingBlock.isBlank() ? null : this.bedrockClosingBlock);
         config.set("Block.Display.Bedrock.Forms.Enabled", this.bedrockFormsEnabled);
         this.writeDisplayComments(config);
+    }
+
+    private void readJavaModel(@NotNull FileConfig config,
+                               @NotNull String path,
+                               @NotNull JavaCrateModel model,
+                               boolean enabledByDefault) {
+        model.setEnabled(config.getBoolean(path + ".Enabled", enabledByDefault));
+        model.setMaterial(parseDisplayMaterial(config.getString(path + ".Material", "PAPER")));
+        model.setCustomModelData(config.getInt(path + ".Custom_Model_Data", 0));
+        model.setItemModel(config.getString(path + ".Item_Model", ""));
+        model.setProvider(config.getString(path + ".Provider", "item_model"));
+        model.setProviderModelId(config.getString(path + ".Model_Id", ""));
+    }
+
+    private void writeJavaModel(@NotNull FileConfig config,
+                                @NotNull String path,
+                                @NotNull JavaCrateModel model,
+                                boolean writeEnabled) {
+        if (writeEnabled) config.set(path + ".Enabled", model.isEnabled());
+        else config.remove(path + ".Enabled");
+        config.set(path + ".Material", model.getMaterial().name());
+        config.set(path + ".Custom_Model_Data", model.getCustomModelData());
+        config.set(path + ".Item_Model", model.getItemModel().isBlank() ? null : model.getItemModel());
+        config.set(path + ".Provider", model.getProvider().getId());
+        config.set(path + ".Model_Id", model.getProviderModelId().isBlank() ? null : model.getProviderModelId());
     }
 
     private void writeRewards(@NotNull FileConfig config) {
@@ -627,6 +677,13 @@ public class Crate implements ConfigBacked {
     }
 
     @NotNull
+    private static String sanitizeBlockData(@Nullable String block, @NotNull String fallback) {
+        if (block == null || block.isBlank()) return fallback;
+        String normalized = block.trim().replace('\n', ' ').replace('\r', ' ').replace('\u0000', ' ');
+        return normalized.substring(0, Math.min(normalized.length(), 256));
+    }
+
+    @NotNull
     private static BlockFace parseCardinalFace(@Nullable String name, @NotNull BlockFace fallback) {
         if (name == null) return fallback;
 
@@ -655,12 +712,38 @@ public class Crate implements ConfigBacked {
             "The /twicrate set <crate> command stores a direction for every placement.");
         config.setComments("Block.Display.Facings",
             "Internal per-location facing data. Format: x,y,z,world,DIRECTION. Do not duplicate locations.");
-        config.setComments("Block.Display.Java.Model.Material",
-            "Java resource-pack carrier item. It must be a valid item material, for example PAPER or PLAYER_HEAD.");
-        config.setComments("Block.Display.Java.Model.Custom_Model_Data",
-            "Legacy/custom-model-data number used by the Java resource pack. Use 0 to disable this component.");
-        config.setComments("Block.Display.Java.Model.Item_Model",
-            "Optional modern item-model key, for example twicrates:vote_crate. Leave empty to use Custom_Model_Data only.");
+        config.setComments("Block.Display.Java.Models.Idle.Material",
+            "The idle Java model is shown while nobody is opening this placement.",
+            "Material must be a valid item carrier such as PAPER or PLAYER_HEAD.");
+        config.setComments("Block.Display.Java.Models.Idle.Custom_Model_Data",
+            "Legacy CustomModelData number. Use 0 when the resource pack uses Item_Model only.");
+        config.setComments("Block.Display.Java.Models.Idle.Item_Model",
+            "Optional modern item-model key, for example twicrates:vote_crate_idle.");
+        config.setComments("Block.Display.Java.Models.Idle.Provider",
+            "Model source for this phase. Allowed: item_model, bettermodel, modelengine, mythicmobs.",
+            "item_model uses Material, Custom_Model_Data and Item_Model. External providers store their selected id in Model_Id.",
+            "External provider rendering is optional-safe: if the provider is missing or cannot expose the model, TwiCrates keeps the item-model fallback.");
+        config.setComments("Block.Display.Java.Models.Idle.Model_Id",
+            "External provider model id selected from BetterModel, ModelEngine or MythicMobs.",
+            "Use /twicrate model <crate> <idle|opening|closing> <provider> <id> for tab-completed ids.");
+        config.setComments("Block.Display.Java.Models.Opening.Enabled",
+            "Shows this model only to the player currently opening this physical crate.",
+            "When disabled, the idle model remains visible throughout the opening.");
+        config.setComments("Block.Display.Java.Models.Opening.Item_Model",
+            "Opening-state resource-pack model key. Material and Custom_Model_Data can be configured alongside it.");
+        config.setComments("Block.Display.Java.Models.Opening.Provider",
+            "Opening model source. Leave Provider as item_model for resource-pack ItemDisplay models.");
+        config.setComments("Block.Display.Java.Models.Opening.Model_Id",
+            "Opening external provider model id. Empty uses the item-model fallback.");
+        config.setComments("Block.Display.Java.Models.Closing.Enabled",
+            "Shows this model to the opening player after rewards are delivered.",
+            "When disabled, TwiCrates switches directly back to the idle model.");
+        config.setComments("Block.Display.Java.Models.Closing.Item_Model",
+            "Closing-state resource-pack model key. It remains visible for Animation.Closing_Model_Duration_Ticks.");
+        config.setComments("Block.Display.Java.Models.Closing.Provider",
+            "Closing model source. Leave Provider as item_model for resource-pack ItemDisplay models.");
+        config.setComments("Block.Display.Java.Models.Closing.Model_Id",
+            "Closing external provider model id. Empty uses the item-model fallback.");
         config.setComments("Block.Display.Java.Scale",
             "Uniform model scale. TwiCrates clamps this to 0.05..4.0 to prevent abusive entity bounds or rendering load.");
         config.setComments("Block.Display.Java.Y_Offset",
@@ -669,13 +752,24 @@ public class Crate implements ConfigBacked {
             "Extra clockwise model rotation in degrees after the placement facing is applied.");
         config.setComments("Block.Display.Java.Require_Accepted_Resource_Pack",
             "When true, the model is visible only after a Java client reports that the server resource pack loaded successfully.");
-        config.setComments("Block.Display.Bedrock.Block",
-            "Vanilla block shown only to Geyser/Floodgate players, for example CHEST, BARREL or TRIAL_SPAWNER.",
+        config.setComments("Block.Display.Bedrock.Blocks.Idle",
+            "Vanilla idle block shown only to Geyser/Floodgate players, for example CHEST, BARREL or TRIAL_SPAWNER.",
             "A full Bukkit block-data string is also accepted. Directional blocks inherit the Java model's per-placement facing.",
             "This is a client-side view; the protected real server block remains unchanged, preventing drops, dupes and physics exploits.");
+        config.setComments("Block.Display.Bedrock.Blocks.Opening",
+            "Optional Bedrock opening-state block. Leave empty to keep the idle block while opening.");
+        config.setComments("Block.Display.Bedrock.Blocks.Closing",
+            "Optional Bedrock closing-state block. Leave empty to return directly to the idle block after reward delivery.");
         config.setComments("Block.Display.Bedrock.Forms.Enabled",
             "Uses native Bedrock forms for crate overview, reward browsing and cost selection.",
             "If no local Geyser/Floodgate API is available, TwiCrates safely falls back to the normal translated inventory flow.");
+        config.setComments("Animation.Reward_Delivery_Delay_Ticks",
+            "Minimum number of server ticks after opening starts before rewards may be delivered (20 ticks = 1 second).",
+            "The configured opening provider is never cut short; longer animations still finish normally.",
+            "Set to 0 to preserve the provider's native reward timing. Values are clamped to 0..12000 ticks.");
+        config.setComments("Animation.Closing_Model_Duration_Ticks",
+            "How long the closing model/block remains visible after reward delivery (20 ticks = 1 second).",
+            "Values are clamped to 0..1200 ticks. Zero returns to idle immediately.");
     }
 
     public int countRewards() {
@@ -924,34 +1018,44 @@ public class Crate implements ConfigBacked {
 
     @NotNull
     public ItemStack getJavaDisplayItem() {
-        ItemStack item = new ItemStack(this.javaDisplayMaterial);
-        ItemMeta meta = item.getItemMeta();
-        if (meta == null) return item;
+        return this.javaIdleModel.createItem();
+    }
 
-        meta.setCustomModelData(this.javaDisplayCustomModelData > 0 ? this.javaDisplayCustomModelData : null);
-        if (!this.javaDisplayItemModel.isBlank()) {
-            NamespacedKey key = NamespacedKey.fromString(this.javaDisplayItemModel);
-            if (key != null) meta.setItemModel(key);
-        }
-        item.setItemMeta(meta);
-        return item;
+    @NotNull
+    public ItemStack getJavaOpeningDisplayItem() {
+        return (this.javaOpeningModel.isEnabled() ? this.javaOpeningModel : this.javaIdleModel).createItem();
+    }
+
+    @NotNull
+    public ItemStack getJavaClosingDisplayItem() {
+        return (this.javaClosingModel.isEnabled() ? this.javaClosingModel : this.javaIdleModel).createItem();
+    }
+
+    @NotNull
+    public JavaCrateModel getJavaIdleModel() {
+        return this.javaIdleModel;
+    }
+
+    @NotNull
+    public JavaCrateModel getJavaOpeningModel() {
+        return this.javaOpeningModel;
+    }
+
+    @NotNull
+    public JavaCrateModel getJavaClosingModel() {
+        return this.javaClosingModel;
     }
 
     public void setJavaDisplayMaterial(@NotNull Material material) {
-        this.javaDisplayMaterial = material.isItem() && !material.isAir() ? material : Material.PAPER;
+        this.javaIdleModel.setMaterial(material);
     }
 
     public void setJavaDisplayCustomModelData(int customModelData) {
-        this.javaDisplayCustomModelData = Math.max(0, customModelData);
+        this.javaIdleModel.setCustomModelData(customModelData);
     }
 
     public void setJavaDisplayItemModel(@Nullable String itemModel) {
-        if (itemModel == null) {
-            this.javaDisplayItemModel = "";
-            return;
-        }
-        String normalized = itemModel.trim().toLowerCase(Locale.ROOT);
-        this.javaDisplayItemModel = normalized.length() <= 128 && NamespacedKey.fromString(normalized) != null ? normalized : "";
+        this.javaIdleModel.setItemModel(itemModel);
     }
 
     public double getJavaDisplayScale() {
@@ -996,16 +1100,54 @@ public class Crate implements ConfigBacked {
 
     @NotNull
     public String getBedrockBlock() {
-        return this.bedrockBlock;
+        return this.bedrockIdleBlock;
     }
 
     public void setBedrockBlock(@Nullable String bedrockBlock) {
-        if (bedrockBlock == null || bedrockBlock.isBlank()) {
-            this.bedrockBlock = "CHEST";
-            return;
-        }
-        String normalized = bedrockBlock.trim().replace('\n', ' ').replace('\r', ' ');
-        this.bedrockBlock = normalized.substring(0, Math.min(normalized.length(), 256));
+        this.setBedrockIdleBlock(bedrockBlock);
+    }
+
+    @NotNull
+    public String getBedrockIdleBlock() {
+        return this.bedrockIdleBlock;
+    }
+
+    public void setBedrockIdleBlock(@Nullable String block) {
+        this.bedrockIdleBlock = sanitizeBlockData(block, "CHEST");
+    }
+
+    @NotNull
+    public String getBedrockOpeningBlock() {
+        return this.bedrockOpeningBlock;
+    }
+
+    public void setBedrockOpeningBlock(@Nullable String block) {
+        this.bedrockOpeningBlock = sanitizeBlockData(block, "");
+    }
+
+    @NotNull
+    public String getBedrockClosingBlock() {
+        return this.bedrockClosingBlock;
+    }
+
+    public void setBedrockClosingBlock(@Nullable String block) {
+        this.bedrockClosingBlock = sanitizeBlockData(block, "");
+    }
+
+    public int getRewardDeliveryDelayTicks() {
+        return this.rewardDeliveryDelayTicks;
+    }
+
+    public void setRewardDeliveryDelayTicks(int ticks) {
+        this.rewardDeliveryDelayTicks = Math.clamp(ticks, 0, 12_000);
+    }
+
+    public int getClosingModelDurationTicks() {
+        return this.closingModelDurationTicks;
+    }
+
+    public void setClosingModelDurationTicks(int ticks) {
+        this.closingModelDurationTicks = Math.clamp(ticks, 0, 1_200);
     }
 
     public boolean isBedrockFormsEnabled() {

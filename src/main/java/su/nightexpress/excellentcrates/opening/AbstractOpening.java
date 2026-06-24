@@ -34,6 +34,10 @@ public abstract class AbstractOpening implements Opening {
     protected long    tickCount;
     protected boolean running;
     protected boolean refundable;
+    private boolean completionDelayBypassed;
+    private boolean finalized;
+
+    private static final int MAX_REWARDS_PER_OPENING = 128;
 
     public AbstractOpening(@NotNull CratesPlugin plugin, @NotNull Player player, @NotNull CrateSource source, @Nullable Cost cost) {
         this.plugin = plugin;
@@ -50,15 +54,29 @@ public abstract class AbstractOpening implements Opening {
         if (this.running) return;
 
         this.running = true;
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.beginOpening(this.player, this.source));
         this.onStart();
     }
 
     @Override
     public void stop() {
         if (!this.running) return;
+        if (this.isCompleted() && !this.completionDelayBypassed && this.tickCount < this.crate.getRewardDeliveryDelayTicks()) return;
 
         this.running = false;
-        this.onStop();
+        if (this.finalized) return;
+
+        try {
+            this.onStop();
+        }
+        catch (RuntimeException | LinkageError exception) {
+            this.plugin.getOpeningManager().removeOpening(this.player);
+            this.plugin.getDisplayManager().ifPresent(manager -> manager.cancelOpening(this.player, this.source));
+            throw exception;
+        }
+        finally {
+            this.finalized = true;
+        }
     }
 
     @Override
@@ -67,6 +85,7 @@ public abstract class AbstractOpening implements Opening {
 
         if (this.isCompleted()) {
             this.stop();
+            if (this.running) this.tickCount = Math.max(0L, this.tickCount + 1L);
             return;
         }
 
@@ -99,7 +118,8 @@ public abstract class AbstractOpening implements Opening {
     protected abstract void onComplete();
 
     protected void onStop() {
-        if (this.isRefundable()) {
+        boolean completed = this.isCompleted();
+        if (!completed && this.isRefundable()) {
             if (this.cost != null) {
                 this.cost.refundAll(this.player);
             }
@@ -110,48 +130,121 @@ public abstract class AbstractOpening implements Opening {
 
         this.plugin.getOpeningManager().removeOpening(this.getPlayer());
 
-        if (this.isCompleted()) {
-            this.onComplete();
+        if (completed) {
+            boolean showClosingDisplay = true;
+            try {
+                try {
+                    this.onComplete();
+                }
+                catch (RuntimeException | LinkageError exception) {
+                    this.plugin.error("Crate opening completion hook failed for '" + this.player.getName() + "'. Payment was refunded.");
+                    exception.printStackTrace();
+                    this.refundPayment();
+                    showClosingDisplay = false;
+                    return;
+                }
 
-            CrateUser user = plugin.getUserManager().getOrFetch(player);
-            UserCrateData userData = user.getCrateData(this.crate);
-            GlobalCrateData globalData = plugin.getDataManager().getCrateDataOrCreate(this.crate);
+                List<Reward> rolledRewards = new ArrayList<>(this.rewards.stream()
+                    .limit(MAX_REWARDS_PER_OPENING)
+                    .toList());
+                this.rewards.clear();
+                this.rewards.addAll(rolledRewards);
 
-            userData.addOpenings(1);
-            globalData.setLatestOpener(this.player);
-            globalData.setDirty(true);
+                if (rolledRewards.isEmpty()) {
+                    this.refundPayment();
+                    showClosingDisplay = false;
+                    return;
+                }
 
-            this.rewards.forEach(reward -> reward.give(this.player));
+                CrateUser user = plugin.getUserManager().getOrFetch(player);
+                UserCrateData userData = user.getCrateData(this.crate);
+                GlobalCrateData globalData = plugin.getDataManager().getCrateDataOrCreate(this.crate);
 
-            if (crate.isOpeningCooldownEnabled()) {
-                userData.addOpeningStreak(1);
+                userData.addOpenings(1);
+                globalData.setLatestOpener(this.player);
+                globalData.setDirty(true);
 
-                if (!userData.isOnCooldown() && !crate.hasCooldownBypassPermission(player)) {
-                    userData.setCooldown(crate.getOpeningCooldownTime());
+                rolledRewards.forEach(reward -> {
+                    try {
+                        reward.give(this.player);
+                    }
+                    catch (RuntimeException | LinkageError exception) {
+                        this.plugin.error("Could not give crate reward '" + reward.getId() + "' to '" + this.player.getName() + "'.");
+                        exception.printStackTrace();
+                    }
+                });
+
+                if (crate.isOpeningCooldownEnabled()) {
+                    userData.addOpeningStreak(1);
+
+                    if (!userData.isOnCooldown() && !crate.hasCooldownBypassPermission(player)) {
+                        userData.setCooldown(crate.getOpeningCooldownTime());
+                    }
+                }
+
+                if (crate.hasMilestones()) {
+                    userData.addMilestones(1);
+                    plugin.getCrateManager().triggerMilestones(player, crate, userData.getMilestone());
+                    if (userData.getMilestone() >= crate.getMaxMilestone() && crate.isMilestonesRepeatable()) {
+                        userData.setMilestone(0);
+                    }
+                }
+
+                Lang.CRATE_OPEN_RESULT_INFO.message().send(this.player, replacer -> replacer
+                    .replace(this.crate.replacePlaceholders())
+                    .replace(Placeholders.GENERIC_REWARDS, rolledRewards.stream()
+                        .map(reward -> reward.replacePlaceholders().apply(Lang.CRATE_OPEN_RESULT_REWARD.text()))
+                        .collect(Collectors.joining(", "))
+                    )
+                );
+
+                List<String> postOpenCommands = Replacer.create().replace(this.crate.replacePlaceholders()).apply(this.crate.getPostOpenCommands());
+                try {
+                    Players.dispatchCommands(this.player, postOpenCommands);
+                }
+                catch (RuntimeException | LinkageError exception) {
+                    this.plugin.error("Post-open commands failed for crate '" + this.crate.getId() + "' and player '" + this.player.getName() + "'.");
+                    exception.printStackTrace();
+                }
+
+                try {
+                    this.plugin.getUserManager().save(user);
+                }
+                catch (RuntimeException | LinkageError exception) {
+                    this.plugin.error("Could not save crate user data for '" + this.player.getName() + "' after opening.");
+                    exception.printStackTrace();
                 }
             }
-
-            if (crate.hasMilestones()) {
-                userData.addMilestones(1);
-                plugin.getCrateManager().triggerMilestones(player, crate, userData.getMilestone());
-                if (userData.getMilestone() >= crate.getMaxMilestone() && crate.isMilestonesRepeatable()) {
-                    userData.setMilestone(0);
-                }
+            finally {
+                boolean finalShowClosingDisplay = showClosingDisplay;
+                this.plugin.getDisplayManager().ifPresent(manager -> {
+                    if (finalShowClosingDisplay) manager.completeOpening(this.player, this.source);
+                    else manager.cancelOpening(this.player, this.source);
+                });
             }
-
-            Lang.CRATE_OPEN_RESULT_INFO.message().send(this.player, replacer -> replacer
-                .replace(this.crate.replacePlaceholders())
-                .replace(Placeholders.GENERIC_REWARDS, this.rewards.stream()
-                    .map(reward -> reward.replacePlaceholders().apply(Lang.CRATE_OPEN_RESULT_REWARD.text()))
-                    .collect(Collectors.joining(", "))
-                )
-            );
-
-            List<String> postOpenCommands = Replacer.create().replace(this.crate.replacePlaceholders()).apply(this.crate.getPostOpenCommands());
-            Players.dispatchCommands(this.player, postOpenCommands);
-
-            this.plugin.getUserManager().save(user);
         }
+        else {
+            this.plugin.getDisplayManager().ifPresent(manager -> manager.cancelOpening(this.player, this.source));
+        }
+    }
+
+    private void refundPayment() {
+        if (this.cost != null) {
+            this.cost.refundAll(this.player);
+        }
+        if (this.source.getItem() != null) {
+            Players.addItem(this.player, this.crate.getItemStack());
+        }
+    }
+
+    /** Used by instant/mass openings and lifecycle cancellation so no delayed opening survives its owner. */
+    public void bypassCompletionDelay() {
+        this.completionDelayBypassed = true;
+    }
+
+    public void forceStop() {
+        this.bypassCompletionDelay();
+        this.stop();
     }
 
     @Override
@@ -162,12 +255,16 @@ public abstract class AbstractOpening implements Opening {
 
     @Override
     public void addReward(@NotNull Reward reward) {
+        if (this.finalized || this.rewards.size() >= MAX_REWARDS_PER_OPENING) return;
         this.rewards.add(reward);
     }
 
     @Override
     public void addRewards(@NotNull Collection<Reward> rewards) {
-        this.rewards.addAll(rewards);
+        if (this.finalized) return;
+        rewards.stream()
+            .limit(Math.max(0, MAX_REWARDS_PER_OPENING - this.rewards.size()))
+            .forEach(this.rewards::add);
     }
 
     @Override

@@ -19,6 +19,11 @@ public class Lang implements LangContainer {
 
     public static final TextLocale COMMAND_ARGUMENT_NAME_CRATE = LangEntry.builder("Command.Argument.Name.Crate").text("crate");
     public static final TextLocale COMMAND_ARGUMENT_NAME_KEY   = LangEntry.builder("Command.Argument.Name.Key").text("key");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_PHASE = LangEntry.builder("Command.Argument.Name.Phase").text("phase");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_PROVIDER = LangEntry.builder("Command.Argument.Name.Provider").text("provider");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_MODEL = LangEntry.builder("Command.Argument.Name.Model").text("model");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_REWARD = LangEntry.builder("Command.Argument.Name.Reward").text("reward");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_ITEM = LangEntry.builder("Command.Argument.Name.Item").text("item");
     public static final TextLocale COMMAND_ARGUMENT_NAME_X     = LangEntry.builder("Command.Argument.Name.X").text("x");
     public static final TextLocale COMMAND_ARGUMENT_NAME_Y     = LangEntry.builder("Command.Argument.Name.Y").text("y");
     public static final TextLocale COMMAND_ARGUMENT_NAME_Z     = LangEntry.builder("Command.Argument.Name.Z").text("z");
@@ -28,6 +33,12 @@ public class Lang implements LangContainer {
 
     public static final MessageLocale ERROR_COMMAND_INVALID_KEY_ARGUMENT = LangEntry.builder("Error.Command.Argument.InvalidKey").chatMessage(
         GRAY.wrap(SOFT_RED.wrap(GENERIC_VALUE) + " is not a valid key!"));
+
+    public static final MessageLocale ERROR_COMMAND_INVALID_MODEL_PROVIDER_ARGUMENT = LangEntry.builder("Error.Command.Argument.InvalidModelProvider").chatMessage(
+        GRAY.wrap(SOFT_RED.wrap(GENERIC_VALUE) + " is not a valid model provider!"));
+
+    public static final MessageLocale ERROR_COMMAND_INVALID_MODEL_PHASE_ARGUMENT = LangEntry.builder("Error.Command.Argument.InvalidModelPhase").chatMessage(
+        GRAY.wrap(SOFT_RED.wrap(GENERIC_VALUE) + " is not a valid crate model phase!"));
 
     public static final TextLocale COMMAND_EDITOR_DESC         = LangEntry.builder("Command.Editor.Desc").text("Open editor GUI.");
     public static final TextLocale COMMAND_DROP_DESC           = LangEntry.builder("Command.Drop.Desc").text("Spawn crate item in the world.");
@@ -43,6 +54,10 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_PREVIEW_DESC        = LangEntry.builder("Command.Preview.Desc").text("Open crate preview.");
     public static final TextLocale COMMAND_RESET_COOLDOWN_DESC = LangEntry.builder("Command.ResetCooldown.Desc").text("Reset player's crate open cooldown.");
     public static final TextLocale COMMAND_SET_DESC            = LangEntry.builder("Command.Set.Desc").text("Link the targeted block to a crate with per-platform display facing.");
+    public static final TextLocale COMMAND_MODEL_DESC          = LangEntry.builder("Command.Model.Desc").text("Select a crate display model from item_model, BetterModel, ModelEngine or MythicMobs.");
+    public static final TextLocale COMMAND_CRAFTENGINE_DESC    = LangEntry.builder("Command.CraftEngine.Desc").text("Select CraftEngine items for crate base items or rewards.");
+    public static final TextLocale COMMAND_CRAFTENGINE_BASE_DESC = LangEntry.builder("Command.CraftEngine.Base.Desc").text("Set a crate item from a CraftEngine custom item id.");
+    public static final TextLocale COMMAND_CRAFTENGINE_REWARD_DESC = LangEntry.builder("Command.CraftEngine.Reward.Desc").text("Add a CraftEngine custom item id to an item reward.");
     public static final TextLocale COMMAND_MENU_DESC           = LangEntry.builder("Command.Menu.Desc").text("Open crate menu.");
 
     public static final MessageLocale COMMAND_DROP_DONE = LangEntry.builder("Command.Drop.Done").chatMessage(
@@ -115,6 +130,18 @@ public class Lang implements LangContainer {
 
     public static final MessageLocale COMMAND_MENU_DONE_OTHERS = LangEntry.builder("Command.Menu.Done.Others").chatMessage(
         GRAY.wrap("Opened crates menu for " + SOFT_YELLOW.wrap(PLAYER_DISPLAY_NAME) + "."));
+
+    public static final MessageLocale COMMAND_MODEL_DONE = LangEntry.builder("Command.Model.Done").chatMessage(
+        GRAY.wrap("Set " + SOFT_YELLOW.wrap(GENERIC_TYPE) + " " + SOFT_YELLOW.wrap(GENERIC_VALUE) + " model for " + SOFT_YELLOW.wrap(CRATE_NAME) + "."));
+
+    public static final MessageLocale COMMAND_CRAFTENGINE_BASE_DONE = LangEntry.builder("Command.CraftEngine.Base.Done").chatMessage(
+        GRAY.wrap("Set " + SOFT_YELLOW.wrap(CRATE_NAME) + " item to CraftEngine item " + SOFT_YELLOW.wrap(GENERIC_VALUE) + "."));
+
+    public static final MessageLocale COMMAND_CRAFTENGINE_REWARD_DONE = LangEntry.builder("Command.CraftEngine.Reward.Done").chatMessage(
+        GRAY.wrap("Added CraftEngine item " + SOFT_YELLOW.wrap(GENERIC_VALUE) + " to reward " + SOFT_YELLOW.wrap(REWARD_ID) + "."));
+
+    public static final MessageLocale COMMAND_CRAFTENGINE_UNAVAILABLE = LangEntry.builder("Command.CraftEngine.Unavailable").chatMessage(
+        GRAY.wrap(SOFT_RED.wrap("CraftEngine item API is not available or the item id is invalid.")));
 
 
 
@@ -205,6 +232,25 @@ public class Lang implements LangContainer {
 
     public static final TextLocale OTHER_MIDNIGHT = LangEntry.builder("Other.Midnight").text("Midnight");
     public static final TextLocale OTHER_FREE     = LangEntry.builder("Other.Free").text("Free");
+    public static final TextLocale OTHER_TICKS    = LangEntry.builder("Other.Ticks").text(GENERIC_AMOUNT + " ticks");
+
+    public static final TextLocale BEDROCK_FORM_COSTS_HEADER = LangEntry.builder("Bedrock.Form.Costs.Header").text("Costs:");
+    public static final TextLocale BEDROCK_FORM_COST_ENTRY = LangEntry.builder("Bedrock.Form.Costs.Entry").text("- " + COST_NAME + ": " + GENERIC_COSTS);
+    public static final TextLocale BEDROCK_FORM_BUTTON_PREVIEW = LangEntry.builder("Bedrock.Form.Button.Preview").text("Preview rewards");
+    public static final TextLocale BEDROCK_FORM_BUTTON_OPEN = LangEntry.builder("Bedrock.Form.Button.Open").text("Open crate");
+    public static final TextLocale BEDROCK_FORM_BUTTON_CLOSE = LangEntry.builder("Bedrock.Form.Button.Close").text("Close");
+    public static final TextLocale BEDROCK_FORM_BUTTON_PREVIOUS = LangEntry.builder("Bedrock.Form.Button.Previous").text("Previous page");
+    public static final TextLocale BEDROCK_FORM_BUTTON_NEXT = LangEntry.builder("Bedrock.Form.Button.Next").text("Next page");
+    public static final TextLocale BEDROCK_FORM_BUTTON_BACK = LangEntry.builder("Bedrock.Form.Button.Back").text("Back");
+    public static final TextLocale BEDROCK_FORM_BUTTON_BACK_REWARDS = LangEntry.builder("Bedrock.Form.Button.BackToRewards").text("Back to rewards");
+    public static final TextLocale BEDROCK_FORM_BUTTON_CANCEL = LangEntry.builder("Bedrock.Form.Button.Cancel").text("Cancel");
+    public static final TextLocale BEDROCK_FORM_REWARDS_TITLE = LangEntry.builder("Bedrock.Form.Rewards.Title").text(CRATE_NAME + " - Rewards");
+    public static final TextLocale BEDROCK_FORM_REWARDS_PAGE = LangEntry.builder("Bedrock.Form.Rewards.Page").text("Page " + GENERIC_CURRENT + "/" + GENERIC_MAX + " - " + GENERIC_AMOUNT + " available rewards");
+    public static final TextLocale BEDROCK_FORM_REWARD_ENTRY = LangEntry.builder("Bedrock.Form.Rewards.Entry").text(REWARD_NAME + BR + REWARD_RARITY_NAME);
+    public static final TextLocale BEDROCK_FORM_REWARD_DETAILS = LangEntry.builder("Bedrock.Form.Reward.Details").text("Rarity: " + REWARD_RARITY_NAME, "Chance: " + REWARD_ROLL_CHANCE + "%");
+    public static final TextLocale BEDROCK_FORM_COST_TITLE = LangEntry.builder("Bedrock.Form.Cost.Title").text(CRATE_NAME + " - Select cost");
+    public static final TextLocale BEDROCK_FORM_COST_DESCRIPTION = LangEntry.builder("Bedrock.Form.Cost.Description").text("Choose exactly one payment option. The server revalidates the cost before opening.");
+    public static final TextLocale BEDROCK_FORM_COST_BUTTON = LangEntry.builder("Bedrock.Form.Cost.Button").text(COST_NAME + BR + GENERIC_COSTS);
 
     public static final TextLocale EFFECT_MODEL_NONE    = LangEntry.builder("EffectModel.None").text("None");
     public static final TextLocale EFFECT_MODEL_HELIX   = LangEntry.builder("EffectModel.Helix").text("Helix");

@@ -12,6 +12,7 @@ public class CrateDialogs {
     public static final DialogKey<GenericItemDialog.Data<Crate>> CRATE_ITEM               = new DialogKey<>("crate_item");
     public static final DialogKey<Crate>                         CRATE_PREVIEW            = new DialogKey<>("crate_preview");
     public static final DialogKey<Crate>                         CRATE_OPENING            = new DialogKey<>("crate_opening");
+    public static final DialogKey<Crate>                         CRATE_DISPLAY            = new DialogKey<>("crate_display");
     public static final DialogKey<Crate>                         CRATE_OPENING_LIMITS     = new DialogKey<>("crate_opening_limits");
     public static final DialogKey<Crate>                         CRATE_EFFECT             = new DialogKey<>("crate_effect");
     public static final DialogKey<Crate>                         CRATE_PARTICLE           = new DialogKey<>("crate_particle");
