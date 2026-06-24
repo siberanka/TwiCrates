@@ -108,8 +108,10 @@ public class Config {
 
     public static final ConfigValue<Boolean> CRATE_PACKET_BASED_MODE = ConfigValue.create("Crate.Packet-Based_Mode",
         true,
-        "Controls whether Java crate models are rendered as per-player packet entities.",
+        "Controls whether Java crate models and linked-block views are rendered per player with packets.",
         "When enabled, both crate holograms and Java crate models use the same PacketEvents/ProtocolLib backend.",
+        "The /twicrate set command converts its target into a real BARRIER interaction anchor.",
+        "Bedrock players receive the crate-specific block configured under Block.Display.Bedrock.Blocks.",
         "PacketEvents is preferred when both packet libraries are installed.",
         "If no supported packet library is available, crate models safely fall back to managed Bukkit ItemDisplay entities.",
         "[Default is true]"

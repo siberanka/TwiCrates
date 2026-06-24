@@ -423,6 +423,7 @@ public class Crate implements ConfigBacked {
         model.setProvider(config.getString(path + ".Provider", "item_model"));
         model.setProviderModelId(config.getString(path + ".Model_Id", ""));
         model.setProviderState(config.getString(path + ".State", ""));
+        model.setYOffset(config.getDouble(path + ".Y_Offset", 0D));
     }
 
     private void writeJavaModel(@NotNull FileConfig config,
@@ -437,6 +438,7 @@ public class Crate implements ConfigBacked {
         config.set(path + ".Provider", model.getProvider().getId());
         config.set(path + ".Model_Id", model.getProviderModelId().isBlank() ? null : model.getProviderModelId());
         config.set(path + ".State", model.getProviderState().isBlank() ? null : model.getProviderState());
+        config.set(path + ".Y_Offset", model.getYOffset());
     }
 
     private void writeRewards(@NotNull FileConfig config) {
@@ -708,7 +710,8 @@ public class Crate implements ConfigBacked {
     private void writeDisplayComments(@NotNull FileConfig config) {
         config.setComments("Block.Display.Enabled",
             "Enables TwiCrates' packet-safe, per-platform crate display system.",
-            "Keep the real linked block in the world. BARRIER is recommended because it is solid but invisible to Java players.");
+            "The linked location uses a real BARRIER as its authoritative server-side interaction anchor.",
+            "Bedrock clients receive the configured Bedrock block while Java clients receive the selected model above that anchor.");
         config.setComments("Block.Display.Default_Facing",
             "Fallback direction for old placements. Allowed values: NORTH, EAST, SOUTH, WEST.",
             "The /twicrate set <crate> command stores a direction for every placement.");
@@ -731,6 +734,8 @@ public class Crate implements ConfigBacked {
         config.setComments("Block.Display.Java.Models.Idle.State",
             "Optional BetterModel/ModelEngine animation state for this model, for example idle, open or close.",
             "Leave empty to use the provider's native default. State names are read from the selected model API and are bounded to 128 characters.");
+        config.setComments("Block.Display.Java.Models.Idle.Y_Offset",
+            "Additional vertical offset for the idle Java model, added on top of Block.Display.Java.Y_Offset.");
         config.setComments("Block.Display.Java.Models.Opening.Enabled",
             "Shows this model only to the player currently opening this physical crate.",
             "When disabled, the idle model remains visible throughout the opening.");
@@ -743,6 +748,8 @@ public class Crate implements ConfigBacked {
         config.setComments("Block.Display.Java.Models.Opening.State",
             "Optional BetterModel/ModelEngine animation state used during this crate opening phase.",
             "This provider state is separate from the TwiCrates opening phase and is selected per model.");
+        config.setComments("Block.Display.Java.Models.Opening.Y_Offset",
+            "Additional vertical offset for the opening Java model, added on top of Block.Display.Java.Y_Offset.");
         config.setComments("Block.Display.Java.Models.Closing.Enabled",
             "Shows this model to the opening player after rewards are delivered.",
             "When disabled, TwiCrates switches directly back to the idle model.");
@@ -755,6 +762,8 @@ public class Crate implements ConfigBacked {
         config.setComments("Block.Display.Java.Models.Closing.State",
             "Optional BetterModel/ModelEngine animation state used during this crate closing phase.",
             "Leave empty to use the provider's default state or when the provider does not expose animation states.");
+        config.setComments("Block.Display.Java.Models.Closing.Y_Offset",
+            "Additional vertical offset for the closing Java model, added on top of Block.Display.Java.Y_Offset.");
         config.setComments("Block.Display.Java.Scale",
             "Uniform model scale. TwiCrates clamps this to 0.05..4.0 to prevent abusive entity bounds or rendering load.");
         config.setComments("Block.Display.Java.Y_Offset",

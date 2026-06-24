@@ -31,7 +31,7 @@ public class HelixEffect extends CrateEffect {
         Location left = getPointOnCircle(location, true, x, y, z);
         Location right = getPointOnCircle(location, true, x - Math.PI, y, z);
 
-        particle.play(player, left, 0, 1);
-        particle.play(player, right, 0, 1);
+        this.playParticle(player, particle, left, 0, 0, 1);
+        this.playParticle(player, particle, right, 0, 0, 1);
     }
 }

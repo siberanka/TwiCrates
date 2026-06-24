@@ -51,6 +51,7 @@ import su.nightexpress.excellentcrates.hologram.HologramHandler;
 import su.nightexpress.excellentcrates.hologram.HologramManager;
 import su.nightexpress.excellentcrates.hologram.entity.FakeEntity;
 import su.nightexpress.excellentcrates.hologram.entity.FakeEntityGroup;
+import su.nightexpress.excellentcrates.hooks.ExternalProviderBridge;
 import su.nightexpress.excellentcrates.util.pos.WorldPos;
 
 import java.util.ArrayList;
@@ -68,6 +69,7 @@ public final class CrateDisplayManager implements Listener {
     private static final int MAX_BLOCK_UPDATES_PER_SYNC = 2048;
     private static final int MAX_JAVA_DISPLAYS_PER_PLAYER = 2048;
     private static final int MAX_DISPLAY_STATES_PER_PLAYER = 64;
+    private static final int MAX_EXTERNAL_MODELS_PER_PLAYER = 128;
     private static final long JAVA_RESYNC_TICKS = 40L;
     private static final long BEDROCK_RESYNC_TICKS = 100L;
 
@@ -82,6 +84,9 @@ public final class CrateDisplayManager implements Listener {
     private final Map<UUID, Set<WorldPos>> packetViews;
     private final Map<UUID, Long> playerChunks;
     private final Map<UUID, Map<WorldPos, DisplayState>> playerDisplayStates;
+    private final Map<UUID, Map<WorldPos, String>> virtualBlockViews;
+    private final Map<UUID, Map<WorldPos, ExternalModelView>> externalModelViews;
+    private final Set<String> warnedExternalModelFailures;
 
     private HologramHandler packetHandler;
     private boolean packetMode;
@@ -105,6 +110,9 @@ public final class CrateDisplayManager implements Listener {
         this.packetViews = new HashMap<>();
         this.playerChunks = new HashMap<>();
         this.playerDisplayStates = new HashMap<>();
+        this.virtualBlockViews = new HashMap<>();
+        this.externalModelViews = new HashMap<>();
+        this.warnedExternalModelFailures = new HashSet<>();
 
         this.packetHandler = plugin.getHologramManager().map(HologramManager::getPacketHandler).orElse(null);
         this.packetMode = Config.CRATE_PACKET_BASED_MODE.get() && this.packetHandler != null;
@@ -120,10 +128,15 @@ public final class CrateDisplayManager implements Listener {
             this.plugin.warn("Crate.Packet-Based_Mode is enabled, but no packet backend is available. Using safe Bukkit ItemDisplay fallback.");
         }
 
-        if (this.packetMode) {
+        if (this.packetMode || Config.CRATE_PACKET_BASED_MODE.get()) {
             this.javaResyncTask = this.plugin.getServer().getScheduler().runTaskTimer(
                 this.plugin,
-                () -> this.plugin.getServer().getOnlinePlayers().forEach(this::syncJavaModels),
+                () -> this.plugin.getServer().getOnlinePlayers().stream()
+                    .filter(player -> !this.isBedrock(player))
+                    .forEach(player -> {
+                        this.syncJavaModels(player);
+                        this.syncVirtualBlocks(player);
+                    }),
                 20L,
                 JAVA_RESYNC_TICKS
             );
@@ -139,7 +152,9 @@ public final class CrateDisplayManager implements Listener {
             );
         }
 
-        // Covers plugin reloads with players already online and normal startup race windows.
+        // Hide physical blocks promptly, then repeat after platform/resource-pack hooks finish their join work.
+        this.plugin.getServer().getScheduler().runTask(this.plugin, () ->
+            this.plugin.getServer().getOnlinePlayers().forEach(this::syncPlayer));
         this.plugin.getServer().getScheduler().runTaskLater(this.plugin, () ->
             this.plugin.getServer().getOnlinePlayers().forEach(this::syncPlayer), 20L);
     }
@@ -159,6 +174,9 @@ public final class CrateDisplayManager implements Listener {
         this.packetViews.clear();
         this.playerChunks.clear();
         this.playerDisplayStates.clear();
+        this.virtualBlockViews.clear();
+        this.closeAllExternalModels();
+        this.warnedExternalModelFailures.clear();
         this.packetHandler = null;
     }
 
@@ -277,6 +295,14 @@ public final class CrateDisplayManager implements Listener {
             this.syncBedrockBlock(player, pos);
             return;
         }
+        Crate stateCrate = this.getOwner(pos);
+        JavaCrateModel stateModel = stateCrate == null ? null : this.getJavaModel(player, stateCrate, pos);
+        Map<WorldPos, ExternalModelView> external = this.externalModelViews.get(player.getUniqueId());
+        if ((stateModel != null && stateModel.getProvider() == CrateModelProvider.BETTERMODEL)
+            || (external != null && external.containsKey(pos))) {
+            this.syncJavaModels(player);
+            return;
+        }
         if (!this.packetMode) {
             this.updateBukkitModel(pos);
             return;
@@ -291,13 +317,8 @@ public final class CrateDisplayManager implements Listener {
             return;
         }
 
-        try {
-            this.packetHandler.sendItemDisplayPackets(player, group.getEntities().getFirst(), false,
-                this.getJavaDisplayItem(player, crate, pos), (float) crate.getJavaDisplayScale());
-        }
-        catch (RuntimeException | LinkageError exception) {
-            this.requestPacketFallback(exception);
-        }
+        this.removePacketViewer(player, pos, group);
+        this.syncJavaModels(player);
     }
 
     private void updateBukkitModel(@NotNull WorldPos pos) {
@@ -314,29 +335,39 @@ public final class CrateDisplayManager implements Listener {
             .map(DisplayState::phase)
             .min(java.util.Comparator.comparingInt(value -> value == DisplayPhase.OPENING ? 0 : 1))
             .orElse(null);
-        display.setItemStack(phase == DisplayPhase.OPENING
-            ? crate.getJavaOpeningDisplayItem()
-            : phase == DisplayPhase.CLOSING ? crate.getJavaClosingDisplayItem() : crate.getJavaDisplayItem());
+        JavaCrateModel model = phase == DisplayPhase.OPENING
+            ? crate.getJavaOpeningModel()
+            : phase == DisplayPhase.CLOSING ? crate.getJavaClosingModel() : crate.getJavaIdleModel();
+        if (!model.isEnabled()) model = crate.getJavaIdleModel();
+        display.setItemStack(model.createItem());
+        Location location = this.getDisplayLocation(crate, pos, model);
+        if (location != null) display.teleport(location);
     }
 
     public void refresh(@NotNull Crate crate) {
+        this.restoreVirtualOwner(crate.getId());
         this.removeOwnedDisplays(crate.getId());
         this.spawnLoadedDisplays(crate);
         this.plugin.getServer().getOnlinePlayers().forEach(this::syncPlayer);
     }
 
     public void remove(@NotNull Crate crate) {
-        Set<WorldPos> positions = crate.getBlockPositions();
-        for (Player player : this.plugin.getServer().getOnlinePlayers()) {
-            if (!this.isBedrock(player)) continue;
-            for (WorldPos pos : positions) {
-                Block block = pos.toBlock();
-                if (block != null && block.getWorld() == player.getWorld() && pos.isChunkLoaded()) {
-                    player.sendBlockChange(block.getLocation(), block.getBlockData());
-                }
-            }
-        }
+        this.restoreVirtualOwner(crate.getId());
         this.removeOwnedDisplays(crate.getId());
+    }
+
+    private void restoreVirtualOwner(@NotNull String crateId) {
+        for (Player player : this.plugin.getServer().getOnlinePlayers()) {
+            Map<WorldPos, String> views = this.virtualBlockViews.get(player.getUniqueId());
+            if (views == null) continue;
+
+            views.entrySet().removeIf(entry -> {
+                if (!entry.getValue().equals(crateId)) return false;
+                this.restoreRealBlock(player, entry.getKey());
+                return true;
+            });
+            if (views.isEmpty()) this.virtualBlockViews.remove(player.getUniqueId());
+        }
     }
 
     private void removeOwnedDisplays(@NotNull String crateId) {
@@ -358,14 +389,24 @@ public final class CrateDisplayManager implements Listener {
     }
 
     private void spawnLoadedDisplays(@NotNull Crate crate) {
-        if (!crate.isDisplayEnabled() || !crate.isJavaDisplayEnabled()) return;
-        crate.getBlockPositions().stream().filter(WorldPos::isChunkLoaded).forEach(pos -> this.createDisplay(crate, pos));
+        if (!crate.isDisplayEnabled()) return;
+        crate.getBlockPositions().stream().filter(WorldPos::isChunkLoaded).forEach(pos -> {
+            this.ensurePhysicalBarrier(pos);
+            if (crate.isJavaDisplayEnabled()) this.createDisplay(crate, pos);
+        });
+    }
+
+    private void ensurePhysicalBarrier(@NotNull WorldPos pos) {
+        Block block = pos.toBlock();
+        if (block != null && block.getType() != Material.BARRIER) {
+            block.setType(Material.BARRIER, false);
+        }
     }
 
     private void createDisplay(@NotNull Crate crate, @NotNull WorldPos pos) {
         if (this.bukkitDisplays.containsKey(pos) || this.packetDisplays.containsKey(pos)) return;
 
-        Location location = this.getDisplayLocation(crate, pos);
+        Location location = this.getDisplayLocation(crate, pos, crate.getJavaIdleModel());
         if (location == null || !location.getChunk().isLoaded()) return;
 
         this.displayOwners.put(pos, crate.getId());
@@ -397,10 +438,10 @@ public final class CrateDisplayManager implements Listener {
     }
 
     @Nullable
-    private Location getDisplayLocation(@NotNull Crate crate, @NotNull WorldPos pos) {
+    private Location getDisplayLocation(@NotNull Crate crate, @NotNull WorldPos pos, @NotNull JavaCrateModel model) {
         Location base = pos.toLocation();
         if (base == null) return null;
-        Location location = base.add(0.5D, crate.getJavaDisplayYOffset(), 0.5D);
+        Location location = base.add(0.5D, crate.getJavaDisplayYOffset() + model.getYOffset(), 0.5D);
         location.setYaw(yaw(crate.getDisplayFacing(pos)) + (float) crate.getJavaDisplayYawOffset());
         return location;
     }
@@ -413,28 +454,38 @@ public final class CrateDisplayManager implements Listener {
     }
 
     private void updateBukkitVisibility(@NotNull Player player) {
+        Map<WorldPos, ExternalModelView> external = this.externalModelViews.get(player.getUniqueId());
         for (Map.Entry<WorldPos, UUID> entry : this.bukkitDisplays.entrySet()) {
             Entity entity = this.plugin.getServer().getEntity(entry.getValue());
             if (!(entity instanceof ItemDisplay display)) continue;
             Crate crate = this.getOwner(entry.getKey());
             if (crate == null) continue;
 
-            if (this.canViewJavaModel(player, crate, display.getLocation())) player.showEntity(this.plugin, display);
+            if (external != null && external.containsKey(entry.getKey())) player.hideEntity(this.plugin, display);
+            else if (this.canViewJavaModel(player, crate, display.getLocation())) player.showEntity(this.plugin, display);
             else player.hideEntity(this.plugin, display);
         }
     }
 
     private void syncJavaModels(@NotNull Player player) {
-        if (!this.packetMode || this.packetFallbackPending || this.packetHandler == null || !player.isOnline()) return;
+        if (!player.isOnline() || this.isBedrock(player)) return;
 
         Set<WorldPos> desired = this.collectNearbyDisplays(player);
+        Set<WorldPos> external = this.syncExternalModels(player, desired);
+        if (!this.packetMode || this.packetFallbackPending || this.packetHandler == null) {
+            this.updateBukkitVisibility(player);
+            return;
+        }
+        desired.removeAll(external);
         Set<WorldPos> current = this.packetViews.computeIfAbsent(player.getUniqueId(), key -> new HashSet<>());
 
         for (WorldPos pos : new HashSet<>(current)) {
             FakeEntityGroup group = this.packetDisplays.get(pos);
             Crate crate = this.getOwner(pos);
             FakeEntity entity = group == null || group.getEntities().isEmpty() ? null : group.getEntities().getFirst();
-            if (desired.contains(pos) && crate != null && entity != null && this.canViewJavaModel(player, crate, entity.getLocation())) continue;
+            JavaCrateModel model = crate == null ? null : this.getJavaModel(player, crate, pos);
+            Location location = crate == null || model == null ? null : this.getDisplayLocation(crate, pos, model);
+            if (desired.contains(pos) && crate != null && entity != null && location != null && this.canViewJavaModel(player, crate, location)) continue;
 
             if (group != null) this.removePacketViewer(player, pos, group);
             else current.remove(pos);
@@ -444,7 +495,9 @@ public final class CrateDisplayManager implements Listener {
             FakeEntityGroup group = this.packetDisplays.get(pos);
             Crate crate = this.getOwner(pos);
             FakeEntity entity = group == null || group.getEntities().isEmpty() ? null : group.getEntities().getFirst();
-            if (crate == null || entity == null || !this.canViewJavaModel(player, crate, entity.getLocation())) continue;
+            JavaCrateModel model = crate == null ? null : this.getJavaModel(player, crate, pos);
+            Location location = crate == null || model == null ? null : this.getDisplayLocation(crate, pos, model);
+            if (crate == null || entity == null || location == null || !this.canViewJavaModel(player, crate, location)) continue;
 
             boolean needSpawn = !group.isViewer(player);
             if (!needSpawn) {
@@ -452,7 +505,7 @@ public final class CrateDisplayManager implements Listener {
                 continue;
             }
             try {
-                this.packetHandler.sendItemDisplayPackets(player, entity, true,
+                this.packetHandler.sendItemDisplayPackets(player, new FakeEntity(entity.getId(), location), true,
                     this.getJavaDisplayItem(player, crate, pos), (float) crate.getJavaDisplayScale());
                 group.addViewer(player);
                 current.add(pos);
@@ -468,6 +521,64 @@ public final class CrateDisplayManager implements Listener {
     }
 
     @NotNull
+    private Set<WorldPos> syncExternalModels(@NotNull Player player, @NotNull Set<WorldPos> desired) {
+        UUID playerId = player.getUniqueId();
+        Map<WorldPos, ExternalModelView> views = this.externalModelViews.computeIfAbsent(playerId, key -> new LinkedHashMap<>());
+        Map<WorldPos, ExternalModelSpec> specs = new LinkedHashMap<>();
+
+        for (WorldPos pos : desired) {
+            Crate crate = this.getOwner(pos);
+            if (crate == null) continue;
+            JavaCrateModel model = this.getJavaModel(player, crate, pos);
+            Location location = this.getDisplayLocation(crate, pos, model);
+            if (location == null || !this.canViewJavaModel(player, crate, location)) continue;
+
+            if (model.getProvider() != CrateModelProvider.BETTERMODEL || model.getProviderModelId().isBlank()) continue;
+            specs.put(pos, new ExternalModelSpec(crate.getId(), model.getProvider(), model.getProviderModelId(),
+                model.getProviderState(), (float) crate.getJavaDisplayScale(), location));
+            if (specs.size() >= MAX_EXTERNAL_MODELS_PER_PLAYER) break;
+        }
+
+        views.entrySet().removeIf(entry -> {
+            ExternalModelSpec spec = specs.get(entry.getKey());
+            if (spec != null && spec.signature().equals(entry.getValue().signature()) && entry.getValue().isAlive()) return false;
+            entry.getValue().close();
+            return true;
+        });
+
+        for (Map.Entry<WorldPos, ExternalModelSpec> entry : specs.entrySet()) {
+            if (views.containsKey(entry.getKey())) continue;
+            ExternalModelSpec spec = entry.getValue();
+            ExternalProviderBridge.ModelCreation creation = ExternalProviderBridge.createViewerModel(
+                spec.provider(), spec.modelId(), spec.state(), player, spec.location(), spec.scale());
+            if (creation.handle().isPresent()) {
+                views.put(entry.getKey(), new ExternalModelView(spec.signature(), creation.handle().get()));
+                this.warnedExternalModelFailures.remove(spec.crateId() + '|' + spec.provider() + '|' + spec.modelId());
+            }
+            else {
+                String warningKey = spec.crateId() + '|' + spec.provider() + '|' + spec.modelId();
+                if (this.warnedExternalModelFailures.size() < 256 && this.warnedExternalModelFailures.add(warningKey)) {
+                    this.plugin.warn("Could not render crate model '" + spec.modelId() + "' for crate '" + spec.crateId()
+                        + "' with " + spec.provider().getId() + ": " + creation.failure());
+                }
+            }
+        }
+
+        if (views.isEmpty()) this.externalModelViews.remove(playerId);
+        return new HashSet<>(views.keySet());
+    }
+
+    @NotNull
+    private JavaCrateModel getJavaModel(@NotNull Player player, @NotNull Crate crate, @NotNull WorldPos pos) {
+        DisplayState state = this.getDisplayState(player, crate, pos);
+        if (state == null) return crate.getJavaIdleModel();
+        return switch (state.phase()) {
+            case OPENING -> crate.getJavaOpeningModel().isEnabled() ? crate.getJavaOpeningModel() : crate.getJavaIdleModel();
+            case CLOSING -> crate.getJavaClosingModel().isEnabled() ? crate.getJavaClosingModel() : crate.getJavaIdleModel();
+        };
+    }
+
+    @NotNull
     private Set<WorldPos> collectNearbyDisplays(@NotNull Player player) {
         Set<WorldPos> result = new HashSet<>();
         int chunkRadius = Math.max(2, this.plugin.getServer().getViewDistance() + 2);
@@ -480,7 +591,7 @@ public final class CrateDisplayManager implements Listener {
                 Set<WorldPos> positions = this.displaysByChunk.get(new DisplayChunk(worldName, x, z));
                 if (positions == null) continue;
                 for (WorldPos pos : positions) {
-                    if (this.packetDisplays.containsKey(pos)) result.add(pos);
+                    if (this.displayOwners.containsKey(pos)) result.add(pos);
                     if (result.size() >= MAX_JAVA_DISPLAYS_PER_PLAYER) return result;
                 }
             }
@@ -536,6 +647,11 @@ public final class CrateDisplayManager implements Listener {
     private void removeDisplay(@NotNull WorldPos pos) {
         this.playerDisplayStates.values().forEach(states -> states.remove(pos));
         this.playerDisplayStates.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        this.externalModelViews.values().forEach(views -> {
+            ExternalModelView view = views.remove(pos);
+            if (view != null) view.close();
+        });
+        this.externalModelViews.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         FakeEntityGroup packetGroup = this.packetDisplays.remove(pos);
         if (packetGroup != null) this.destroyPacketGroup(pos, packetGroup);
 
@@ -578,6 +694,16 @@ public final class CrateDisplayManager implements Listener {
         this.plugin.getServer().getScheduler().runTask(this.plugin, this::activateBukkitFallback);
     }
 
+    private void closeExternalModels(@NotNull UUID playerId) {
+        Map<WorldPos, ExternalModelView> views = this.externalModelViews.remove(playerId);
+        if (views != null) views.values().forEach(ExternalModelView::close);
+    }
+
+    private void closeAllExternalModels() {
+        this.externalModelViews.values().forEach(views -> views.values().forEach(ExternalModelView::close));
+        this.externalModelViews.clear();
+    }
+
     private void activateBukkitFallback() {
         if (!this.packetMode) return;
         this.packetMode = false;
@@ -601,49 +727,85 @@ public final class CrateDisplayManager implements Listener {
 
     private void syncPlayer(@NotNull Player player) {
         if (!player.isOnline()) return;
-        if (this.packetMode) this.syncJavaModels(player);
-        else this.updateBukkitVisibility(player);
-        this.syncBedrockBlocks(player);
+        this.syncJavaModels(player);
+        this.syncVirtualBlocks(player);
     }
 
     public void syncBedrockBlocks(@NotNull Player player) {
         if (!this.isBedrock(player)) return;
 
+        this.syncVirtualBlocks(player);
+    }
+
+    private void syncVirtualBlocks(@NotNull Player player) {
+        if (!player.isOnline()) return;
+
+        boolean bedrock = this.isBedrock(player);
+        boolean virtualizeJava = !bedrock && Config.CRATE_PACKET_BASED_MODE.get();
+        Map<WorldPos, Crate> desired = new LinkedHashMap<>();
+
         int radius = Math.max(32, (this.plugin.getServer().getViewDistance() + 2) * 16);
         double maximumDistance = (double) radius * radius;
-        int updates = 0;
 
         for (Crate crate : this.crateManager.getCrates()) {
-            if (!crate.isDisplayEnabled() || !crate.isBedrockDisplayEnabled()) continue;
+            if (!crate.isDisplayEnabled()) continue;
+            if (bedrock && !crate.isBedrockDisplayEnabled()) continue;
+            if (virtualizeJava && !crate.isJavaDisplayEnabled()) continue;
+            if (!bedrock && !virtualizeJava) continue;
 
             for (WorldPos pos : crate.getBlockPositions()) {
-                if (updates >= MAX_BLOCK_UPDATES_PER_SYNC) return;
+                if (desired.size() >= MAX_BLOCK_UPDATES_PER_SYNC) break;
                 Location location = pos.toLocation();
                 if (location == null || location.getWorld() != player.getWorld() || !pos.isChunkLoaded()) continue;
                 if (location.distanceSquared(player.getLocation()) > maximumDistance) continue;
-
-                player.sendBlockChange(location, this.createBedrockData(player, crate, pos));
-                updates++;
+                desired.put(pos, crate);
             }
         }
+
+        UUID playerId = player.getUniqueId();
+        Map<WorldPos, String> current = this.virtualBlockViews.computeIfAbsent(playerId, key -> new LinkedHashMap<>());
+        current.entrySet().removeIf(entry -> {
+            Crate crate = desired.get(entry.getKey());
+            if (crate != null && crate.getId().equals(entry.getValue())) return false;
+            this.restoreRealBlock(player, entry.getKey());
+            return true;
+        });
+
+        BlockData javaBarrier = Material.BARRIER.createBlockData();
+        desired.forEach((pos, crate) -> {
+            Location location = pos.toLocation();
+            if (location == null) return;
+            BlockData data = bedrock ? this.createBedrockData(player, crate, pos) : javaBarrier;
+            player.sendBlockChange(location, data);
+            current.put(pos, crate.getId());
+        });
+
+        if (current.isEmpty()) this.virtualBlockViews.remove(playerId);
     }
 
     private void syncBedrockBlock(@NotNull Player player, @NotNull WorldPos pos) {
         Crate crate = this.getOwner(pos);
         Location location = pos.toLocation();
+        if (crate == null) {
+            Block block = pos.toBlock();
+            if (block != null) crate = this.crateManager.getCrateByBlock(block);
+        }
         if (crate == null || location == null || location.getWorld() != player.getWorld() || !pos.isChunkLoaded()) return;
         player.sendBlockChange(location, this.createBedrockData(player, crate, pos));
+        String crateId = crate.getId();
+        this.virtualBlockViews.computeIfAbsent(player.getUniqueId(), key -> new LinkedHashMap<>()).put(pos, crateId);
     }
 
     private void restoreRealBlocks(@NotNull Player player) {
-        if (!this.isBedrock(player)) return;
-        for (Crate crate : this.crateManager.getCrates()) {
-            for (WorldPos pos : crate.getBlockPositions()) {
-                Block block = pos.toBlock();
-                if (block != null && block.getWorld() == player.getWorld() && pos.isChunkLoaded()) {
-                    player.sendBlockChange(block.getLocation(), block.getBlockData());
-                }
-            }
+        Map<WorldPos, String> views = this.virtualBlockViews.remove(player.getUniqueId());
+        if (views == null) return;
+        views.keySet().forEach(pos -> this.restoreRealBlock(player, pos));
+    }
+
+    private void restoreRealBlock(@NotNull Player player, @NotNull WorldPos pos) {
+        Block block = pos.toBlock();
+        if (block != null && block.getWorld() == player.getWorld() && pos.isChunkLoaded()) {
+            player.sendBlockChange(block.getLocation(), block.getBlockData());
         }
     }
 
@@ -694,6 +856,7 @@ public final class CrateDisplayManager implements Listener {
     @EventHandler(priority = EventPriority.MONITOR)
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.syncPlayer(player));
         this.plugin.getServer().getScheduler().runTaskLater(this.plugin, () -> this.syncPlayer(player), 20L);
     }
 
@@ -704,6 +867,8 @@ public final class CrateDisplayManager implements Listener {
         this.playerChunks.remove(uuid);
         this.plugin.setResourcePackLoaded(uuid, false);
         this.packetViews.remove(uuid);
+        this.virtualBlockViews.remove(uuid);
+        this.closeExternalModels(uuid);
         Map<WorldPos, DisplayState> removedStates = this.playerDisplayStates.remove(uuid);
         if (!this.packetMode && removedStates != null) removedStates.keySet().forEach(this::updateBukkitModel);
         this.packetDisplays.values().forEach(group -> group.removeViewer(player));
@@ -760,10 +925,11 @@ public final class CrateDisplayManager implements Listener {
         Chunk chunk = event.getChunk();
         boolean hasDisplay = false;
         for (Crate crate : this.crateManager.getCrates()) {
-            if (!crate.isDisplayEnabled() || !crate.isJavaDisplayEnabled()) continue;
+            if (!crate.isDisplayEnabled()) continue;
             List<WorldPos> positions = crate.getBlockPositions().stream().filter(pos -> isInChunk(pos, chunk)).toList();
+            positions.forEach(this::ensurePhysicalBarrier);
             if (!positions.isEmpty()) hasDisplay = true;
-            positions.forEach(pos -> this.createDisplay(crate, pos));
+            if (crate.isJavaDisplayEnabled()) positions.forEach(pos -> this.createDisplay(crate, pos));
         }
         if (!hasDisplay) return;
         this.plugin.getServer().getOnlinePlayers().stream()
@@ -779,12 +945,17 @@ public final class CrateDisplayManager implements Listener {
         positions.stream().filter(pos -> isInChunk(pos, event.getChunk())).toList().forEach(pos -> {
             this.removeDisplay(pos);
             this.displayOwners.remove(pos);
+            this.virtualBlockViews.values().forEach(views -> views.remove(pos));
         });
+        this.virtualBlockViews.entrySet().removeIf(entry -> entry.getValue().isEmpty());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBreak(BlockBreakEvent event) {
-        if (this.crateManager.getCrateByBlock(event.getBlock()) != null) event.setCancelled(true);
+        if (this.crateManager.getCrateByBlock(event.getBlock()) == null) return;
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        this.plugin.getServer().getScheduler().runTask(this.plugin, () -> this.syncVirtualBlocks(player));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -854,5 +1025,39 @@ public final class CrateDisplayManager implements Listener {
 
     private record StateTarget(@NotNull UUID playerId, @NotNull WorldPos pos) {
 
+    }
+
+    private record ExternalModelSignature(@NotNull String crateId,
+                                          @NotNull CrateModelProvider provider,
+                                          @NotNull String modelId,
+                                          @NotNull String state,
+                                          float scale,
+                                          double y) {
+
+    }
+
+    private record ExternalModelSpec(@NotNull String crateId,
+                                     @NotNull CrateModelProvider provider,
+                                     @NotNull String modelId,
+                                     @NotNull String state,
+                                     float scale,
+                                     @NotNull Location location) {
+
+        @NotNull
+        private ExternalModelSignature signature() {
+            return new ExternalModelSignature(this.crateId, this.provider, this.modelId, this.state, this.scale, this.location.getY());
+        }
+    }
+
+    private record ExternalModelView(@NotNull ExternalModelSignature signature,
+                                     @NotNull ExternalProviderBridge.ModelHandle handle) {
+
+        private void close() {
+            this.handle.close();
+        }
+
+        private boolean isAlive() {
+            return this.handle.isAlive();
+        }
     }
 }

@@ -26,7 +26,7 @@ public class BeaconEffect extends CrateEffect {
         for (int yStep = step; yStep > Math.max(0, step - 25); --yStep) {
             Location location = getPointOnCircle(origin, true, x, 0.55, yStep * 0.75);
 
-            particle.play(player, location, 0.0f, 0.15f, 0.0f, 0.0f, 4);
+            this.playParticle(player, particle, location, 0.0f, 0.15f, 0.0f, 0.0f, 4);
         }
     }
 }

@@ -41,7 +41,7 @@ public class TornadoEffect extends CrateEffect {
         }
         for (Vector vector : this.createCircle(vertical, radius)) {
             Location location = loc.add(vector);
-            particle.play(player, location, 0.1f, 0.0f, 3);
+            this.playParticle(player, particle, location, 0.1f, 0.0f, 3);
             loc.subtract(vector);
         }
         loc.subtract(0.0D, Y_OFFSET, 0.0D);

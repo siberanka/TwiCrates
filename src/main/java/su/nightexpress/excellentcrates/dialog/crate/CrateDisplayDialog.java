@@ -43,6 +43,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
     private static final TextLocale INPUT_IDLE_PROVIDER = text("Idle.Provider", "Idle Provider");
     private static final TextLocale INPUT_IDLE_PROVIDER_MODEL = text("Idle.ProviderModel", "Idle Provider Model ID");
     private static final TextLocale INPUT_IDLE_PROVIDER_STATE = text("Idle.ProviderState", "Idle Provider State (empty = default)");
+    private static final TextLocale INPUT_IDLE_Y_OFFSET = text("Idle.YOffset", "Idle Y Offset " + GRAY.wrap("(-4.0..4.0)"));
     private static final TextLocale INPUT_OPENING_ENABLED = text("Opening.Enabled", "Opening Model Enabled");
     private static final TextLocale INPUT_OPENING_MATERIAL = text("Opening.Material", "Opening Material");
     private static final TextLocale INPUT_OPENING_CMD = text("Opening.CustomModelData", "Opening Custom Model Data");
@@ -50,6 +51,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
     private static final TextLocale INPUT_OPENING_PROVIDER = text("Opening.Provider", "Opening Provider");
     private static final TextLocale INPUT_OPENING_PROVIDER_MODEL = text("Opening.ProviderModel", "Opening Provider Model ID");
     private static final TextLocale INPUT_OPENING_PROVIDER_STATE = text("Opening.ProviderState", "Opening Provider State (empty = default)");
+    private static final TextLocale INPUT_OPENING_Y_OFFSET = text("Opening.YOffset", "Opening Y Offset " + GRAY.wrap("(-4.0..4.0)"));
     private static final TextLocale INPUT_CLOSING_ENABLED = text("Closing.Enabled", "Closing Model Enabled");
     private static final TextLocale INPUT_CLOSING_MATERIAL = text("Closing.Material", "Closing Material");
     private static final TextLocale INPUT_CLOSING_CMD = text("Closing.CustomModelData", "Closing Custom Model Data");
@@ -57,6 +59,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
     private static final TextLocale INPUT_CLOSING_PROVIDER = text("Closing.Provider", "Closing Provider");
     private static final TextLocale INPUT_CLOSING_PROVIDER_MODEL = text("Closing.ProviderModel", "Closing Provider Model ID");
     private static final TextLocale INPUT_CLOSING_PROVIDER_STATE = text("Closing.ProviderState", "Closing Provider State (empty = default)");
+    private static final TextLocale INPUT_CLOSING_Y_OFFSET = text("Closing.YOffset", "Closing Y Offset " + GRAY.wrap("(-4.0..4.0)"));
     private static final TextLocale INPUT_SCALE = text("Scale", "Model Scale " + GRAY.wrap("(0.05..4.0)"));
     private static final TextLocale INPUT_Y_OFFSET = text("YOffset", "Y Offset " + GRAY.wrap("(-4.0..4.0)"));
     private static final TextLocale INPUT_YAW_OFFSET = text("YawOffset", "Yaw Offset " + GRAY.wrap("(degrees)"));
@@ -92,6 +95,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
                     textInput("idle_provider", INPUT_IDLE_PROVIDER, idle.getProvider().getId(), 32),
                     textInput("idle_provider_model", INPUT_IDLE_PROVIDER_MODEL, idle.getProviderModelId(), 128),
                     textInput("idle_provider_state", INPUT_IDLE_PROVIDER_STATE, idle.getProviderState(), 128),
+                    textInput("idle_y_offset", INPUT_IDLE_Y_OFFSET, String.valueOf(idle.getYOffset()), 12),
                     DialogInputs.bool("opening_enabled", INPUT_OPENING_ENABLED).initial(opening.isEnabled()).build(),
                     textInput("opening_material", INPUT_OPENING_MATERIAL, opening.getMaterial().name(), 64),
                     textInput("opening_cmd", INPUT_OPENING_CMD, String.valueOf(opening.getCustomModelData()), 10),
@@ -99,6 +103,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
                     textInput("opening_provider", INPUT_OPENING_PROVIDER, opening.getProvider().getId(), 32),
                     textInput("opening_provider_model", INPUT_OPENING_PROVIDER_MODEL, opening.getProviderModelId(), 128),
                     textInput("opening_provider_state", INPUT_OPENING_PROVIDER_STATE, opening.getProviderState(), 128),
+                    textInput("opening_y_offset", INPUT_OPENING_Y_OFFSET, String.valueOf(opening.getYOffset()), 12),
                     DialogInputs.bool("closing_enabled", INPUT_CLOSING_ENABLED).initial(closing.isEnabled()).build(),
                     textInput("closing_material", INPUT_CLOSING_MATERIAL, closing.getMaterial().name(), 64),
                     textInput("closing_cmd", INPUT_CLOSING_CMD, String.valueOf(closing.getCustomModelData()), 10),
@@ -106,6 +111,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
                     textInput("closing_provider", INPUT_CLOSING_PROVIDER, closing.getProvider().getId(), 32),
                     textInput("closing_provider_model", INPUT_CLOSING_PROVIDER_MODEL, closing.getProviderModelId(), 128),
                     textInput("closing_provider_state", INPUT_CLOSING_PROVIDER_STATE, closing.getProviderState(), 128),
+                    textInput("closing_y_offset", INPUT_CLOSING_Y_OFFSET, String.valueOf(closing.getYOffset()), 12),
                     textInput("scale", INPUT_SCALE, String.valueOf(crate.getJavaDisplayScale()), 12),
                     textInput("y_offset", INPUT_Y_OFFSET, String.valueOf(crate.getJavaDisplayYOffset()), 12),
                     textInput("yaw_offset", INPUT_YAW_OFFSET, String.valueOf(crate.getJavaDisplayYawOffset()), 12),
@@ -155,6 +161,7 @@ public final class CrateDisplayDialog extends Dialog<Crate> {
         model.setProvider(nbt.getText(prefix + "_provider", model.getProvider().getId()));
         model.setProviderModelId(nbt.getText(prefix + "_provider_model", model.getProviderModelId()));
         model.setProviderState(nbt.getText(prefix + "_provider_state", model.getProviderState()));
+        model.setYOffset(number(nbt.getText(prefix + "_y_offset", ""), model.getYOffset()));
     }
 
     private static double number(@NotNull String text, double fallback) {

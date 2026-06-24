@@ -1,6 +1,8 @@
 package su.nightexpress.excellentcrates.hooks;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
@@ -30,6 +32,98 @@ public final class ExternalProviderBridge {
 
     private ExternalProviderBridge() {
 
+    }
+
+    public interface ModelHandle extends AutoCloseable {
+
+        boolean isAlive();
+
+        @Override
+        void close();
+    }
+
+    public record ModelCreation(@NotNull Optional<ModelHandle> handle, @NotNull String failure) {
+
+        @NotNull
+        private static ModelCreation success(@NotNull ModelHandle handle) {
+            return new ModelCreation(Optional.of(handle), "");
+        }
+
+        @NotNull
+        private static ModelCreation failure(@NotNull String reason) {
+            return new ModelCreation(Optional.empty(), reason);
+        }
+    }
+
+    /**
+     * Creates a viewer-scoped BetterModel tracker. Other providers keep the safe item-model fallback until they expose
+     * an equivalent viewer-scoped API; no server entity is spawned by this bridge.
+     */
+    @NotNull
+    public static ModelCreation createViewerModel(@NotNull CrateModelProvider provider,
+                                                   @NotNull String modelId,
+                                                   @Nullable String state,
+                                                   @NotNull Player viewer,
+                                                   @NotNull Location location,
+                                                   float scale) {
+        if (provider != CrateModelProvider.BETTERMODEL) return ModelCreation.failure("unsupported viewer-scoped provider");
+        if (!isSafeId(modelId, 128)) return ModelCreation.failure("invalid model id");
+        if (!isProviderAvailable(provider)) return ModelCreation.failure("provider is not installed, enabled, or API-compatible");
+
+        try {
+            Class<?> betterModel = Class.forName("kr.toxicity.model.api.BetterModel");
+            Object renderer = invokeStatic(betterModel, "modelOrNull", new Class<?>[]{String.class}, modelId);
+            if (renderer == null) return ModelCreation.failure("model id was not found by BetterModel");
+
+            Class<?> adapter = Class.forName("kr.toxicity.model.api.bukkit.platform.BukkitAdapter");
+            Object platformLocation = invokeStatic(adapter, "adapt", new Class<?>[]{Location.class}, location);
+            Object platformPlayer = invokeStatic(adapter, "adapt", new Class<?>[]{Player.class}, viewer);
+            if (platformLocation == null || platformPlayer == null) return ModelCreation.failure("Bukkit platform adapter returned null");
+
+            Object tracker = invokeCompatible(renderer, "create", platformLocation);
+            if (tracker == null) return ModelCreation.failure("BetterModel did not create a dummy tracker");
+
+            try {
+                Class<?> scaler = Class.forName("kr.toxicity.model.api.tracker.ModelScaler");
+                Object valueScaler = invokeStatic(scaler, "value", new Class<?>[]{float.class}, Math.max(0.05F, Math.min(4F, scale)));
+                if (valueScaler != null) invokeCompatible(tracker, "scaler", valueScaler);
+            }
+            catch (ReflectiveOperationException ignored) {
+                // Scale support differs between BetterModel releases; rendering is still safe at provider default.
+            }
+
+            invokeCompatible(tracker, "spawn", platformPlayer);
+            if (isSafeId(state, 128)) invokeCompatible(tracker, "animate", state);
+
+            return ModelCreation.success(new ModelHandle() {
+                @Override
+                public boolean isAlive() {
+                    try {
+                        Object closed = invokeCompatible(tracker, "isClosed");
+                        return !(closed instanceof Boolean value) || !value;
+                    }
+                    catch (Throwable ignored) {
+                        return false;
+                    }
+                }
+
+                @Override
+                public void close() {
+                    try {
+                        invokeCompatible(tracker, "close");
+                    }
+                    catch (Throwable ignored) {
+                        // Provider may already have closed the tracker during its own reload/shutdown.
+                    }
+                }
+            });
+        }
+        catch (Throwable throwable) {
+            Throwable cause = throwable;
+            while (cause.getCause() != null && cause.getCause() != cause) cause = cause.getCause();
+            String message = cause.getMessage();
+            return ModelCreation.failure(cause.getClass().getSimpleName() + (message == null || message.isBlank() ? "" : ": " + message));
+        }
     }
 
     @NotNull
@@ -225,6 +319,40 @@ public final class ExternalProviderBridge {
     private static Object invoke(@NotNull Object object, @NotNull String name) throws ReflectiveOperationException {
         Method method = object.getClass().getMethod(name);
         return method.invoke(object);
+    }
+
+    @Nullable
+    private static Object invokeCompatible(@NotNull Object object,
+                                           @NotNull String name,
+                                           Object... arguments) throws ReflectiveOperationException {
+        for (Method method : object.getClass().getMethods()) {
+            if (!method.getName().equals(name) || method.getParameterCount() != arguments.length) continue;
+            Class<?>[] types = method.getParameterTypes();
+            boolean compatible = true;
+            for (int index = 0; index < types.length; index++) {
+                Object argument = arguments[index];
+                if (argument != null && !wrap(types[index]).isInstance(argument)) {
+                    compatible = false;
+                    break;
+                }
+            }
+            if (compatible) return method.invoke(object, arguments);
+        }
+        throw new NoSuchMethodException(object.getClass().getName() + "#" + name);
+    }
+
+    @NotNull
+    private static Class<?> wrap(@NotNull Class<?> type) {
+        if (!type.isPrimitive()) return type;
+        if (type == boolean.class) return Boolean.class;
+        if (type == byte.class) return Byte.class;
+        if (type == short.class) return Short.class;
+        if (type == int.class) return Integer.class;
+        if (type == long.class) return Long.class;
+        if (type == float.class) return Float.class;
+        if (type == double.class) return Double.class;
+        if (type == char.class) return Character.class;
+        return Void.class;
     }
 
     private static void addId(@NotNull List<String> ids, @NotNull String id) {

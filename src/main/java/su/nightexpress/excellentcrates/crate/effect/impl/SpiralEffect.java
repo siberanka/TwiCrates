@@ -35,6 +35,6 @@ public class SpiralEffect extends CrateEffect {
         double y = VERTICAL_SPACING * angle;
         Location location = origin.clone().add(x, y, z);
 
-        particle.play(player, location, 0f, 0f, 5);
+        this.playParticle(player, particle, location, 0f, 0f, 5);
     }
 }

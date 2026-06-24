@@ -47,7 +47,7 @@ public class SphereEffect extends CrateEffect {
             Point3D point3d = circlePoints[point];
             Location location = origin.clone().add(point3d.x, point3d.z + 0.2, point3d.y);
 
-            particle.play(player, location, 0f, 0f, 1);
+            this.playParticle(player, particle, location, 0f, 0f, 1);
         }
     }
 }

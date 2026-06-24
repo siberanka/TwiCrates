@@ -19,6 +19,7 @@ public final class JavaCrateModel {
     private CrateModelProvider provider;
     private String providerModelId;
     private String providerState;
+    private double yOffset;
 
     public JavaCrateModel(boolean enabled, @NotNull Material material, int customModelData, @Nullable String itemModel) {
         this.setEnabled(enabled);
@@ -28,6 +29,7 @@ public final class JavaCrateModel {
         this.provider = CrateModelProvider.ITEM_MODEL;
         this.providerModelId = "";
         this.providerState = "";
+        this.yOffset = 0D;
     }
 
     @NotNull
@@ -129,6 +131,14 @@ public final class JavaCrateModel {
 
         String trimmed = state.trim();
         this.providerState = trimmed.length() <= 128 && trimmed.chars().noneMatch(ch -> ch < 32 || ch == 127) ? trimmed : "";
+    }
+
+    public double getYOffset() {
+        return this.yOffset;
+    }
+
+    public void setYOffset(double yOffset) {
+        this.yOffset = Math.clamp(Double.isFinite(yOffset) ? yOffset : 0D, -4D, 4D);
     }
 
     @NotNull

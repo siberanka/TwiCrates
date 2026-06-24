@@ -268,7 +268,7 @@ public class CrateOptionsMenu extends LinkedMenu<CratesPlugin, Crate> implements
             .toMenuItem().setSlots(15).setHandler((viewer1, event) -> {
                 if (event.getClick() == ClickType.DROP) {
                     crate.removeHologram();
-                    crate.clearBlockPositions();
+                    this.plugin.getCrateManager().unlinkCrateBlocks(crate);
                     crate.markDirty();
                     this.runNextTick(flush);
                     return;

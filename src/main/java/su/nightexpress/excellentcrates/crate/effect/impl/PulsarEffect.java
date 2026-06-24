@@ -27,7 +27,7 @@ public class PulsarEffect extends CrateEffect {
         for (int point = 0; point < y * 10.0; ++point) {
             double x = 2 * Math.PI / (y * 10.0) * point;
             Location location = getPointOnCircle(shifted.clone(), false, x, y, 1.0);
-            particle.play(player, location, 0.1f, 0.0f, 2);
+            this.playParticle(player, particle, location, 0.1f, 0.0f, 2);
         }
     }
 }

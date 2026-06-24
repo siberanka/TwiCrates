@@ -1,6 +1,7 @@
 package su.nightexpress.excellentcrates.crate;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -392,6 +393,7 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
 
         crate.removeHologram();
         this.plugin.getDisplayManager().ifPresent(manager -> manager.remove(crate));
+        this.unlinkCrateBlocks(crate);
 
         this.plugin.getDataManager().handleCrateRemoval(crate);
         this.crateByIdMap.remove(crate.getId());
@@ -439,13 +441,31 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
         if (existing != null && existing != crate) return false;
 
         crate.removeHologram();
-        crate.clearBlockPositions();
+        this.unlinkCrateBlocks(crate);
+        block.setType(Material.BARRIER, false);
         crate.addBlockPosition(block.getLocation(), player.getFacing().getOppositeFace());
+        crate.setDisplayEnabled(true);
+        crate.setJavaDisplayEnabled(true);
         crate.recreateHologram();
         crate.markDirty();
         crate.saveIfDirty();
         this.plugin.getDisplayManager().ifPresent(manager -> manager.refresh(crate));
         return true;
+    }
+
+    /**
+     * Removes every physical anchor owned by a crate. Anchors are real barriers, so a missing packet backend can
+     * never reveal the placeholder block. Only registered crate positions are touched and only barriers are removed.
+     */
+    public void unlinkCrateBlocks(@NotNull Crate crate) {
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.remove(crate));
+        crate.getBlockPositions().forEach(pos -> {
+            Block linked = pos.toBlock();
+            if (linked != null && linked.getType() == Material.BARRIER) {
+                linked.setType(Material.AIR, false);
+            }
+        });
+        crate.clearBlockPositions();
     }
 
     public boolean dropCrateItem(@NotNull Crate crate, @NotNull Location location) {
@@ -797,6 +817,7 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
 
                 Location location = worldPos.toLocation();
                 if (location == null) return;
+                location.add(0D, crate.getJavaDisplayYOffset() + crate.getJavaIdleModel().getYOffset(), 0D);
 
                 CrateUtils.getPlayersForEffects(location).forEach(player -> {
                     effect.playStep(location, particle, player);

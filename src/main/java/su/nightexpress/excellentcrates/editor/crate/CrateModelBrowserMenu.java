@@ -119,6 +119,9 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
                     : data.provider.getId())));
         filler.setItemClick(id -> (viewer1, event) -> {
             JavaCrateModel model = phaseModel(data.crate, data.phase);
+            data.crate.setDisplayEnabled(true);
+            data.crate.setJavaDisplayEnabled(true);
+            model.setEnabled(true);
             if (data.mode == BrowserMode.STATES) {
                 model.setProviderState(id);
             }

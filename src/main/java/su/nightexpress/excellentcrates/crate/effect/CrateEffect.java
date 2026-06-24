@@ -1,6 +1,7 @@
 package su.nightexpress.excellentcrates.crate.effect;
 
 import org.bukkit.Location;
+import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import su.nightexpress.excellentcrates.crate.effect.impl.DummyEffect;
@@ -54,6 +55,35 @@ public abstract class CrateEffect {
     }
 
     public abstract void onStepPlay(@NotNull Location origin, @NotNull UniParticle particle, int step, @NotNull Player player);
+
+    protected final void playParticle(@NotNull Player player,
+                                      @NotNull UniParticle particle,
+                                      @NotNull Location location,
+                                      double offset,
+                                      double speed,
+                                      int amount) {
+        this.playParticle(player, particle, location, offset, offset, offset, speed, amount);
+    }
+
+    protected final void playParticle(@NotNull Player player,
+                                      @NotNull UniParticle particle,
+                                      @NotNull Location location,
+                                      double offsetX,
+                                      double offsetY,
+                                      double offsetZ,
+                                      double speed,
+                                      int amount) {
+        Particle type = particle.getParticle();
+        if (type == null) return;
+
+        int safeAmount = Math.max(1, Math.min(amount, 64));
+        try {
+            player.spawnParticle(type, location, safeAmount, offsetX, offsetY, offsetZ, speed, particle.getData(), true);
+        }
+        catch (RuntimeException | LinkageError exception) {
+            particle.play(player, location, offsetX, offsetY, offsetZ, speed, safeAmount);
+        }
+    }
 
     @NotNull
     public static Location getPointOnCircle(@NotNull Location location, boolean doCopy, double x, double z, double y) {

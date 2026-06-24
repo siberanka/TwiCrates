@@ -7,7 +7,7 @@ Original project by NightExpress. TwiCrates fork development by siberanka.
 ## Highlights
 
 - Packet-based, per-player Java resource-pack models using `ItemDisplay`, modern `Item_Model`, legacy `Custom_Model_Data`, scale, offset and yaw controls.
-- Optional external model selection from BetterModel, ModelEngine and MythicMobs IDs through commands and paginated editor menus, including BetterModel/ModelEngine animation-state discovery.
+- Optional external model selection from BetterModel, ModelEngine and MythicMobs IDs through commands and paginated editor menus, including BetterModel/ModelEngine animation-state discovery and viewer-scoped BetterModel rendering.
 - Per-crate Bedrock/Geyser blocks. A Bedrock player can see a chest, barrel or another safe vanilla block where a Java player sees the resource-pack model.
 - Placement-specific cardinal facing. The Java model and directional Bedrock block use the same stored direction.
 - Native Bedrock crate overview, paginated reward browser, reward details and cost-selection forms through Geyser/Floodgate Cumulus.
@@ -18,9 +18,9 @@ Original project by NightExpress. TwiCrates fork development by siberanka.
 
 ## Safe display design
 
-TwiCrates does not replace or break the real linked server block. The real block remains the authoritative interaction and collision point. Java players receive a lightweight, non-persistent model display; Bedrock players receive a client-side vanilla block view at the same coordinates.
+TwiCrates converts a block linked by `/twicrate set` into a real server-side `BARRIER`. This guarantees an invisible, authoritative interaction/collision anchor even if a packet backend is absent or temporarily unavailable. Java players receive the configured lightweight model; Bedrock players receive their configured client-side vanilla block at the same coordinate. Unlinking or deleting the crate removes only the barrier owned by that linked position.
 
-Use `BARRIER` as the real linked block when possible. It is solid and visually empty on Java, so the model can occupy the space without spawning a removable armor stand or turning a display entity into the authoritative crate.
+Any safe, non-container solid block can be used as the temporary link target; linking deliberately replaces it with the managed barrier anchor.
 
 This design avoids item drops, model-entity pickup, piston desynchronization, ghost blocks and chunk-save duplication. Linked blocks are protected against breaking, explosions, piston movement and entity block conversion. Inventory-holder blocks are rejected by `/twicrate set` so linking a crate cannot trap or expose container contents.
 
@@ -53,7 +53,7 @@ Crate:
   Packet-Based_Mode: true
 ```
 
-When enabled, both Java crate models and holograms use the detected packet backend; PacketEvents is preferred when both integrations are installed. Crate models safely fall back to managed Bukkit `ItemDisplay` entities if neither backend is available or a packet backend fails at runtime. Setting it to `false` uses Bukkit entities for crate models, while holograms keep their existing packet implementation.
+When enabled, Java crate models and holograms use the detected packet backend; PacketEvents is preferred when both integrations are installed. The physical linked location remains a real `BARRIER`, while Bedrock receives its configured client-side block. BetterModel viewer trackers operate independently of PacketEvents/ProtocolLib. Item-model displays safely fall back to managed Bukkit `ItemDisplay` entities if neither packet backend is available or a backend fails at runtime. Setting it to `false` uses Bukkit entities for item-model crate displays, while holograms keep their existing packet implementation.
 
 ## Crate display example
 
@@ -74,6 +74,7 @@ Block:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_idle'
           Custom_Model_Data: 10001
+          Y_Offset: 0.0
         Opening:
           Enabled: true
           Provider: item_model
@@ -82,6 +83,7 @@ Block:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_opening'
           Custom_Model_Data: 10002
+          Y_Offset: 0.0
         Closing:
           Enabled: true
           Provider: item_model
@@ -90,6 +92,7 @@ Block:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_closing'
           Custom_Model_Data: 10003
+          Y_Offset: 0.0
       Scale: 1.0
       Y_Offset: 0.5
       Yaw_Offset: 0.0
@@ -109,9 +112,9 @@ Animation:
   Closing_Model_Duration_Ticks: 20
 ```
 
-Opening and closing models are per-player in packet mode: the opener sees the active phase while other players keep the idle model. If the opening model/block is disabled or empty, idle remains visible. If closing is absent, the display returns directly to idle after reward delivery. The Bukkit fallback applies the safest aggregate phase globally because server entities cannot carry different item metadata per viewer.
+Opening and closing models are per-player in packet mode: the opener sees the active phase while other players keep the idle model. Each Java phase has its own `Y_Offset`, added on top of the shared `Block.Display.Java.Y_Offset`, so idle/opening/closing animations can be nudged up or down independently. If the opening model/block is disabled or empty, idle remains visible. If closing is absent, the display returns directly to idle after reward delivery. The Bukkit fallback applies the safest aggregate phase globally because server entities cannot carry different item metadata per viewer.
 
-For Java model phases, `Provider: item_model` keeps the resource-pack `ItemDisplay` path. `Provider: bettermodel`, `modelengine` or `mythicmobs` stores the selected provider model id in `Model_Id`. BetterModel and ModelEngine models can additionally set `State` to one of the animations exposed by that concrete model (for example `idle`, `open` or `close`); an empty value uses the provider default. If a provider is absent, not loaded yet or cannot expose the id/state safely, TwiCrates keeps the item-model fallback instead of crashing.
+For Java model phases, `Provider: item_model` keeps the resource-pack `ItemDisplay` path. `Provider: bettermodel`, `modelengine` or `mythicmobs` stores the selected provider model id in `Model_Id`. BetterModel and ModelEngine models can additionally set `State` to one of the animations exposed by that concrete model (for example `idle`, `open` or `close`); an empty value uses the provider default. BetterModel displays use viewer-scoped `DummyTracker` instances, so opening/closing states remain private to the opener and no server entity is created. If a provider is absent, reloading or cannot expose/create the id safely, TwiCrates closes stale handles and keeps the item-model fallback instead of crashing.
 
 The crate editor exposes **Java & Bedrock Display**, **External Model Browser** and **CraftEngine Base Item** actions. The external model browser is paginated and cycles idle/opening/closing plus item_model/BetterModel/ModelEngine/MythicMobs providers. Selecting a BetterModel or ModelEngine model opens a second paginated state browser populated from that model's live API; `default` clears the explicit state. Reward item content has a **CraftEngine Items** browser for adding CraftEngine custom items directly. The existing **Opening Animation** dialog also edits reward-delivery and closing-state durations. All labels and Bedrock form text use the normal TwiCrates language-entry system.
 
@@ -120,6 +123,7 @@ Useful Bedrock block examples include `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_S
 ## Commands and permissions
 
 - `/twicrate model <crate> <idle|opening|closing> <item_model|bettermodel|modelengine|mythicmobs> <id> [state]` - sets the Java display model source; model IDs and BetterModel/ModelEngine states are context-aware tab completions. Use `default` or omit the state to clear an explicit state.
+  Selecting a model through this command or the model browser automatically enables the crate display, Java display and selected phase.
 - `/twicrate craftengine base <crate> <item-id>` - sets the crate base item from a CraftEngine custom item.
 - `/twicrate craftengine reward <crate> <reward-id> <item-id> [amount]` - adds a CraftEngine custom item to an item reward.
 
@@ -151,7 +155,9 @@ If the platform API is unavailable or forms are disabled for a crate, TwiCrates 
 - Display scale and offsets are bounded; form text, reward pages and block updates are capped.
 - Packet mode creates no server-side Java model entities. Per-player viewer sets are distance/chunk bounded and cleared on quit, chunk unload, reload and shutdown.
 - The Bukkit fallback uses non-persistent, invulnerable, gravity-free displays tracked by UUID and removed on chunk unload/plugin shutdown.
+- Crate particle effects are emitted from the Java model's idle display height and use force-enabled player particle packets with a safe NightCore fallback, so packet-based crate blocks do not suppress the surrounding effect animation.
 - Online players are resynchronized after startup/reload and again after join, teleport, respawn, world change and chunk movement; a bounded periodic reconciliation repairs missed client packets.
+- Per-player virtual linked-block views are bounded, reconciled by distance/chunk and restored to the real server block on crate removal, reload and shutdown.
 - Player/resource-pack/form tracking is cleared on quit and shutdown.
 - Invalid model materials, item-model keys and Bedrock block data fail closed to safe defaults.
 - No shell, expression-language, reflection-selected command or user-controlled class loading is exposed by the new features.

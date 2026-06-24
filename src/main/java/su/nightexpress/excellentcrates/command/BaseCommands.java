@@ -247,6 +247,9 @@ public class BaseCommands {
         if (!state.isBlank() && !ExternalProviderBridge.isSafeId(state, 128)) return false;
 
         JavaCrateModel model = getPhaseModel(crate, phase);
+        crate.setDisplayEnabled(true);
+        crate.setJavaDisplayEnabled(true);
+        model.setEnabled(true);
         model.setProvider(provider);
         if (provider == CrateModelProvider.ITEM_MODEL) {
             model.setItemModel(modelId);

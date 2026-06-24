@@ -44,8 +44,8 @@ public class HeartEffect extends CrateEffect {
         Location left = origin.clone().add(point.x, point.y, point.z);
         Location right = origin.clone().add(mirrored.x, mirrored.y, mirrored.z);
 
-        particle.play(player, left, 0, 1);
-        particle.play(player, right, 0, 1);
+        this.playParticle(player, particle, left, 0, 0, 1);
+        this.playParticle(player, particle, right, 0, 0, 1);
 
         if (step == 0) {
             this.rotate = !this.rotate;

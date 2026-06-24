@@ -36,7 +36,7 @@ public class VortexEffect extends CrateEffect {
                 double addZ = Math.sin(point) * progress * RADIUS;
                 double addY = 3.5D - 0.02 * 5 * step;
                 Location location = origin.clone().add(addX, addY, addZ);
-                particle.play(player, location, 0.1f, 0.0f, 1);
+                this.playParticle(player, particle, location, 0.1f, 0.0f, 1);
             }
         }
     }
