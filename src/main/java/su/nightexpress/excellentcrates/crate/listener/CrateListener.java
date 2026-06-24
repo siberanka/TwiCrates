@@ -18,6 +18,7 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import su.nightexpress.excellentcrates.CratesPlugin;
+import su.nightexpress.excellentcrates.bedrock.BedrockManager;
 import su.nightexpress.excellentcrates.Placeholders;
 import su.nightexpress.excellentcrates.config.Config;
 import su.nightexpress.excellentcrates.config.Lang;
@@ -111,6 +112,11 @@ public class CrateListener extends AbstractListener<CratesPlugin> {
                 return;
             }
             this.manager.setPreviewCooldown(player);
+        }
+
+        BedrockManager bedrockManager = this.plugin.getBedrockManager().orElse(null);
+        if (block != null && bedrockManager != null && bedrockManager.openCrateForm(player, crate, clickAction, block.getLocation())) {
+            return;
         }
 
         this.manager.interactCrate(player, crate, clickAction, item, block);

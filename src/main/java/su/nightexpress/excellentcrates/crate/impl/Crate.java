@@ -2,10 +2,13 @@ package su.nightexpress.excellentcrates.crate.impl;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import su.nightexpress.excellentcrates.CratesPlugin;
@@ -59,11 +62,14 @@ import java.util.stream.Collectors;
 
 public class Crate implements ConfigBacked {
 
+    private static final int MAX_BLOCK_POSITIONS = 4096;
+
     private final CratesPlugin plugin;
     private final Path         filePath;
     private final String       id;
 
     private final Set<WorldPos>                 blockPositions;
+    private final Map<WorldPos, BlockFace>      blockFacings;
     private final Set<Milestone>                milestones;
     private final Map<String, Cost>             costMap;
     private final LinkedHashMap<String, Reward> rewardMap;
@@ -95,6 +101,20 @@ public class Crate implements ConfigBacked {
     private String      effectType;
     private UniParticle effectParticle;
 
+    private boolean  displayEnabled;
+    private boolean  javaDisplayEnabled;
+    private Material javaDisplayMaterial;
+    private int      javaDisplayCustomModelData;
+    private String   javaDisplayItemModel;
+    private double   javaDisplayScale;
+    private double   javaDisplayYOffset;
+    private double   javaDisplayYawOffset;
+    private boolean  javaDisplayRequirePack;
+    private boolean  bedrockDisplayEnabled;
+    private String   bedrockBlock;
+    private boolean  bedrockFormsEnabled;
+    private BlockFace defaultDisplayFacing;
+
     private List<String> postOpenCommands;
 
     private boolean dirty;
@@ -107,8 +127,18 @@ public class Crate implements ConfigBacked {
         this.costMap = new LinkedHashMap<>();
         this.rewardMap = new LinkedHashMap<>();
         this.blockPositions = new HashSet<>();
+        this.blockFacings = new HashMap<>();
         this.milestones = new HashSet<>();
         this.description = new ArrayList<>();
+        this.javaDisplayMaterial = Material.PAPER;
+        this.javaDisplayItemModel = "";
+        this.javaDisplayScale = 1D;
+        this.javaDisplayYOffset = 0.5D;
+        this.bedrockBlock = "CHEST";
+        this.defaultDisplayFacing = BlockFace.SOUTH;
+        this.javaDisplayEnabled = true;
+        this.bedrockDisplayEnabled = true;
+        this.bedrockFormsEnabled = true;
     }
 
     public void load() throws IllegalStateException {
@@ -219,7 +249,11 @@ public class Crate implements ConfigBacked {
             this.addCost(cost);
         });
 
-        this.blockPositions.addAll(config.getStringList("Block.Positions").stream().map(WorldPos::deserialize).toList());
+        this.blockPositions.addAll(config.getStringList("Block.Positions").stream()
+            .limit(MAX_BLOCK_POSITIONS)
+            .map(WorldPos::deserialize)
+            .filter(Predicate.not(WorldPos::isEmpty))
+            .toList());
         if (!Config.isCrateInAirBlocksAllowed()) {
             this.blockPositions.removeIf(pos -> {
                 Block block = pos.toBlock();
@@ -236,6 +270,30 @@ public class Crate implements ConfigBacked {
         this.setEffectParticle(UniParticle.read(config, "Block.Effect.Particle"));
         this.setEffectEnabled(config.getBoolean("Block.Effect.Enabled", !this.effectType.equalsIgnoreCase(EffectId.NONE)));
 
+        this.setDisplayEnabled(config.getBoolean("Block.Display.Enabled", false));
+        this.setJavaDisplayEnabled(config.getBoolean("Block.Display.Java.Enabled", true));
+        this.setJavaDisplayMaterial(parseDisplayMaterial(config.getString("Block.Display.Java.Model.Material", "PAPER")));
+        this.setJavaDisplayCustomModelData(config.getInt("Block.Display.Java.Model.Custom_Model_Data", 0));
+        this.setJavaDisplayItemModel(config.getString("Block.Display.Java.Model.Item_Model", ""));
+        this.setJavaDisplayScale(config.getDouble("Block.Display.Java.Scale", 1D));
+        this.setJavaDisplayYOffset(config.getDouble("Block.Display.Java.Y_Offset", 0.5D));
+        this.setJavaDisplayYawOffset(config.getDouble("Block.Display.Java.Yaw_Offset", 0D));
+        this.setJavaDisplayRequirePack(config.getBoolean("Block.Display.Java.Require_Accepted_Resource_Pack", false));
+        this.setBedrockDisplayEnabled(config.getBoolean("Block.Display.Bedrock.Enabled", true));
+        this.setBedrockBlock(config.getString("Block.Display.Bedrock.Block", "CHEST"));
+        this.setBedrockFormsEnabled(config.getBoolean("Block.Display.Bedrock.Forms.Enabled", true));
+        this.setDefaultDisplayFacing(parseCardinalFace(config.getString("Block.Display.Default_Facing", "SOUTH"), BlockFace.SOUTH));
+
+        config.getStringList("Block.Display.Facings").stream().limit(MAX_BLOCK_POSITIONS).forEach(serialized -> {
+            int separator = serialized.lastIndexOf(',');
+            if (separator <= 0 || separator >= serialized.length() - 1) return;
+
+            WorldPos pos = WorldPos.deserialize(serialized.substring(0, separator));
+            if (pos.isEmpty() || !this.blockPositions.contains(pos)) return;
+
+            this.blockFacings.put(pos, parseCardinalFace(serialized.substring(separator + 1), this.defaultDisplayFacing));
+        });
+
         this.setPostOpenCommands(config.getStringList("Post-Open.Commands"));
 
         for (String sId : config.getSection("Rewards.List")) {
@@ -250,6 +308,9 @@ public class Crate implements ConfigBacked {
                 this.milestones.add(Milestone.read(this, config, "Milestones.List." + sId));
             }
         }
+
+        // Persist normalized defaults and the operator-facing comments on first load/reload.
+        this.writeDisplaySettings(config);
     }
 
     public void saveForce() {
@@ -299,7 +360,31 @@ public class Crate implements ConfigBacked {
         config.remove("Block.Effect.Particle");
         this.effectParticle.write(config, "Block.Effect.Particle");
 
+        this.writeDisplaySettings(config);
+
         config.set("Post-Open.Commands", this.postOpenCommands);
+    }
+
+    private void writeDisplaySettings(@NotNull FileConfig config) {
+        config.set("Block.Display.Enabled", this.displayEnabled);
+        config.set("Block.Display.Default_Facing", this.defaultDisplayFacing.name());
+        config.set("Block.Display.Facings", this.blockFacings.entrySet().stream()
+            .filter(entry -> this.blockPositions.contains(entry.getKey()))
+            .map(entry -> entry.getKey().serialize() + "," + entry.getValue().name())
+            .sorted()
+            .toList());
+        config.set("Block.Display.Java.Enabled", this.javaDisplayEnabled);
+        config.set("Block.Display.Java.Model.Material", this.javaDisplayMaterial.name());
+        config.set("Block.Display.Java.Model.Custom_Model_Data", this.javaDisplayCustomModelData);
+        config.set("Block.Display.Java.Model.Item_Model", this.javaDisplayItemModel.isBlank() ? null : this.javaDisplayItemModel);
+        config.set("Block.Display.Java.Scale", this.javaDisplayScale);
+        config.set("Block.Display.Java.Y_Offset", this.javaDisplayYOffset);
+        config.set("Block.Display.Java.Yaw_Offset", this.javaDisplayYawOffset);
+        config.set("Block.Display.Java.Require_Accepted_Resource_Pack", this.javaDisplayRequirePack);
+        config.set("Block.Display.Bedrock.Enabled", this.bedrockDisplayEnabled);
+        config.set("Block.Display.Bedrock.Block", this.bedrockBlock);
+        config.set("Block.Display.Bedrock.Forms.Enabled", this.bedrockFormsEnabled);
+        this.writeDisplayComments(config);
     }
 
     private void writeRewards(@NotNull FileConfig config) {
@@ -517,16 +602,80 @@ public class Crate implements ConfigBacked {
     }
 
     public void addBlockPosition(@NotNull Location location) {
+        this.addBlockPosition(location, this.defaultDisplayFacing);
+    }
+
+    public void addBlockPosition(@NotNull Location location, @NotNull BlockFace facing) {
         WorldPos pos = WorldPos.from(location);
 
         this.plugin.getCrateManager().removeCratePositions(this);
         this.blockPositions.add(pos);
+        this.blockFacings.put(pos, cardinalFace(facing, this.defaultDisplayFacing));
         this.plugin.getCrateManager().addCratePositions(this);
     }
 
     public void clearBlockPositions() {
         this.plugin.getCrateManager().removeCratePositions(this);
         this.blockPositions.clear();
+        this.blockFacings.clear();
+    }
+
+    @NotNull
+    private static Material parseDisplayMaterial(@Nullable String name) {
+        Material material = name == null ? null : Material.matchMaterial(name);
+        return material != null && material.isItem() && !material.isAir() ? material : Material.PAPER;
+    }
+
+    @NotNull
+    private static BlockFace parseCardinalFace(@Nullable String name, @NotNull BlockFace fallback) {
+        if (name == null) return fallback;
+
+        try {
+            return cardinalFace(BlockFace.valueOf(name.toUpperCase(Locale.ROOT)), fallback);
+        }
+        catch (IllegalArgumentException exception) {
+            return fallback;
+        }
+    }
+
+    @NotNull
+    private static BlockFace cardinalFace(@NotNull BlockFace face, @NotNull BlockFace fallback) {
+        return switch (face) {
+            case NORTH, EAST, SOUTH, WEST -> face;
+            default -> fallback;
+        };
+    }
+
+    private void writeDisplayComments(@NotNull FileConfig config) {
+        config.setComments("Block.Display.Enabled",
+            "Enables TwiCrates' packet-safe, per-platform crate display system.",
+            "Keep the real linked block in the world. BARRIER is recommended because it is solid but invisible to Java players.");
+        config.setComments("Block.Display.Default_Facing",
+            "Fallback direction for old placements. Allowed values: NORTH, EAST, SOUTH, WEST.",
+            "The /twicrate set <crate> command stores a direction for every placement.");
+        config.setComments("Block.Display.Facings",
+            "Internal per-location facing data. Format: x,y,z,world,DIRECTION. Do not duplicate locations.");
+        config.setComments("Block.Display.Java.Model.Material",
+            "Java resource-pack carrier item. It must be a valid item material, for example PAPER or PLAYER_HEAD.");
+        config.setComments("Block.Display.Java.Model.Custom_Model_Data",
+            "Legacy/custom-model-data number used by the Java resource pack. Use 0 to disable this component.");
+        config.setComments("Block.Display.Java.Model.Item_Model",
+            "Optional modern item-model key, for example twicrates:vote_crate. Leave empty to use Custom_Model_Data only.");
+        config.setComments("Block.Display.Java.Scale",
+            "Uniform model scale. TwiCrates clamps this to 0.05..4.0 to prevent abusive entity bounds or rendering load.");
+        config.setComments("Block.Display.Java.Y_Offset",
+            "Vertical offset from the linked block's base. TwiCrates clamps this to -4.0..4.0.");
+        config.setComments("Block.Display.Java.Yaw_Offset",
+            "Extra clockwise model rotation in degrees after the placement facing is applied.");
+        config.setComments("Block.Display.Java.Require_Accepted_Resource_Pack",
+            "When true, the model is visible only after a Java client reports that the server resource pack loaded successfully.");
+        config.setComments("Block.Display.Bedrock.Block",
+            "Vanilla block shown only to Geyser/Floodgate players, for example CHEST, BARREL or TRIAL_SPAWNER.",
+            "A full Bukkit block-data string is also accepted. Directional blocks inherit the Java model's per-placement facing.",
+            "This is a client-side view; the protected real server block remains unchanged, preventing drops, dupes and physics exploits.");
+        config.setComments("Block.Display.Bedrock.Forms.Enabled",
+            "Uses native Bedrock forms for crate overview, reward browsing and cost selection.",
+            "If no local Geyser/Floodgate API is available, TwiCrates safely falls back to the normal translated inventory flow.");
     }
 
     public int countRewards() {
@@ -746,6 +895,125 @@ public class Crate implements ConfigBacked {
     @NotNull
     public Set<WorldPos> getBlockPositions() {
         return new HashSet<>(this.blockPositions);
+    }
+
+    @NotNull
+    public BlockFace getDisplayFacing(@NotNull WorldPos pos) {
+        return this.blockFacings.getOrDefault(pos, this.defaultDisplayFacing);
+    }
+
+    public void setDefaultDisplayFacing(@NotNull BlockFace facing) {
+        this.defaultDisplayFacing = cardinalFace(facing, BlockFace.SOUTH);
+    }
+
+    public boolean isDisplayEnabled() {
+        return this.displayEnabled;
+    }
+
+    public void setDisplayEnabled(boolean displayEnabled) {
+        this.displayEnabled = displayEnabled;
+    }
+
+    public boolean isJavaDisplayEnabled() {
+        return this.javaDisplayEnabled;
+    }
+
+    public void setJavaDisplayEnabled(boolean javaDisplayEnabled) {
+        this.javaDisplayEnabled = javaDisplayEnabled;
+    }
+
+    @NotNull
+    public ItemStack getJavaDisplayItem() {
+        ItemStack item = new ItemStack(this.javaDisplayMaterial);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
+
+        meta.setCustomModelData(this.javaDisplayCustomModelData > 0 ? this.javaDisplayCustomModelData : null);
+        if (!this.javaDisplayItemModel.isBlank()) {
+            NamespacedKey key = NamespacedKey.fromString(this.javaDisplayItemModel);
+            if (key != null) meta.setItemModel(key);
+        }
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    public void setJavaDisplayMaterial(@NotNull Material material) {
+        this.javaDisplayMaterial = material.isItem() && !material.isAir() ? material : Material.PAPER;
+    }
+
+    public void setJavaDisplayCustomModelData(int customModelData) {
+        this.javaDisplayCustomModelData = Math.max(0, customModelData);
+    }
+
+    public void setJavaDisplayItemModel(@Nullable String itemModel) {
+        if (itemModel == null) {
+            this.javaDisplayItemModel = "";
+            return;
+        }
+        String normalized = itemModel.trim().toLowerCase(Locale.ROOT);
+        this.javaDisplayItemModel = normalized.length() <= 128 && NamespacedKey.fromString(normalized) != null ? normalized : "";
+    }
+
+    public double getJavaDisplayScale() {
+        return this.javaDisplayScale;
+    }
+
+    public void setJavaDisplayScale(double scale) {
+        this.javaDisplayScale = Math.clamp(Double.isFinite(scale) ? scale : 1D, 0.05D, 4D);
+    }
+
+    public double getJavaDisplayYOffset() {
+        return this.javaDisplayYOffset;
+    }
+
+    public void setJavaDisplayYOffset(double offset) {
+        this.javaDisplayYOffset = Math.clamp(Double.isFinite(offset) ? offset : 0.5D, -4D, 4D);
+    }
+
+    public double getJavaDisplayYawOffset() {
+        return this.javaDisplayYawOffset;
+    }
+
+    public void setJavaDisplayYawOffset(double yawOffset) {
+        this.javaDisplayYawOffset = Double.isFinite(yawOffset) ? yawOffset % 360D : 0D;
+    }
+
+    public boolean isJavaDisplayRequirePack() {
+        return this.javaDisplayRequirePack;
+    }
+
+    public void setJavaDisplayRequirePack(boolean requirePack) {
+        this.javaDisplayRequirePack = requirePack;
+    }
+
+    public boolean isBedrockDisplayEnabled() {
+        return this.bedrockDisplayEnabled;
+    }
+
+    public void setBedrockDisplayEnabled(boolean bedrockDisplayEnabled) {
+        this.bedrockDisplayEnabled = bedrockDisplayEnabled;
+    }
+
+    @NotNull
+    public String getBedrockBlock() {
+        return this.bedrockBlock;
+    }
+
+    public void setBedrockBlock(@Nullable String bedrockBlock) {
+        if (bedrockBlock == null || bedrockBlock.isBlank()) {
+            this.bedrockBlock = "CHEST";
+            return;
+        }
+        String normalized = bedrockBlock.trim().replace('\n', ' ').replace('\r', ' ');
+        this.bedrockBlock = normalized.substring(0, Math.min(normalized.length(), 256));
+    }
+
+    public boolean isBedrockFormsEnabled() {
+        return this.bedrockFormsEnabled;
+    }
+
+    public void setBedrockFormsEnabled(boolean bedrockFormsEnabled) {
+        this.bedrockFormsEnabled = bedrockFormsEnabled;
     }
 
     public boolean isHologramEnabled() {

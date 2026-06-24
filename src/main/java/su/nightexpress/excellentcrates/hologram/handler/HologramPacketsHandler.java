@@ -11,6 +11,7 @@ import com.github.retrooper.packetevents.wrapper.play.server.WrapperPlayServerSp
 import io.github.retrooper.packetevents.util.SpigotConversionUtil;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import su.nightexpress.excellentcrates.hologram.entity.FakeEntity;
 import su.nightexpress.nightcore.util.Players;
@@ -58,6 +59,27 @@ public class HologramPacketsHandler extends AbstractHologramHandler {
     }
 
     @Override
+    public void sendItemDisplayPackets(@NotNull Player player,
+                                       @NotNull FakeEntity entity,
+                                       boolean needSpawn,
+                                       @NotNull ItemStack itemStack,
+                                       float scale) {
+        PacketWrapper<?> dataPacket = this.createMetadataPacket(entity.getId(), dataList -> {
+            dataList.add(new EntityData<>(12, EntityDataTypes.VECTOR3F,
+                new com.github.retrooper.packetevents.util.Vector3f(scale, scale, scale)));
+            dataList.add(new EntityData<>(23, EntityDataTypes.ITEMSTACK,
+                SpigotConversionUtil.fromBukkitItemStack(itemStack)));
+            dataList.add(new EntityData<>(24, EntityDataTypes.BYTE,
+                (byte) org.bukkit.entity.ItemDisplay.ItemDisplayTransform.FIXED.ordinal()));
+        });
+
+        if (needSpawn) {
+            this.sendPacket(player, this.createSpawnPacket(entity, EntityType.ITEM_DISPLAY));
+        }
+        this.sendPacket(player, dataPacket);
+    }
+
+    @Override
     public void sendDestroyEntityPacket(@NotNull Set<Integer> idList) {
         this.broadcastPacket(this.createDestroyPacket(idList));
     }
@@ -74,7 +96,12 @@ public class HologramPacketsHandler extends AbstractHologramHandler {
 
     @NotNull
     private WrapperPlayServerSpawnEntity createSpawnPacket(@NotNull FakeEntity entity) {
-        com.github.retrooper.packetevents.protocol.entity.type.EntityType type = SpigotConversionUtil.fromBukkitEntityType(EntityType.TEXT_DISPLAY);
+        return this.createSpawnPacket(entity, EntityType.TEXT_DISPLAY);
+    }
+
+    @NotNull
+    private WrapperPlayServerSpawnEntity createSpawnPacket(@NotNull FakeEntity entity, @NotNull EntityType bukkitType) {
+        com.github.retrooper.packetevents.protocol.entity.type.EntityType type = SpigotConversionUtil.fromBukkitEntityType(bukkitType);
         com.github.retrooper.packetevents.protocol.world.Location location = SpigotConversionUtil.fromBukkitLocation(entity.getLocation());
 
         return new WrapperPlayServerSpawnEntity(entity.getId(), UUID.randomUUID(), type, location, 0F, 0, null);

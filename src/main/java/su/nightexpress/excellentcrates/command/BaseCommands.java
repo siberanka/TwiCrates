@@ -2,6 +2,7 @@ package su.nightexpress.excellentcrates.command;
 
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import su.nightexpress.excellentcrates.CratesPlugin;
@@ -164,6 +165,27 @@ public class BaseCommands {
             )
             .executes(this::resetCrateCooldown)
         );
+
+        nodeBuilder.branch(Commands.literal("set")
+            .description(Lang.COMMAND_SET_DESC)
+            .permission(Perms.COMMAND_SET)
+            .playerOnly()
+            .withArguments(CommandArguments.forCrate(plugin))
+            .executes(this::setCrateBlock)
+        );
+    }
+
+    private boolean setCrateBlock(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
+        Player player = context.getPlayerOrThrow();
+        Crate crate = arguments.get(CommandArguments.CRATE, Crate.class);
+        Block block = player.getTargetBlockExact(8);
+        if (block == null || !this.plugin.getCrateManager().linkCrateBlock(player, crate, block)) {
+            Lang.COMMAND_SET_ERROR_BLOCK.message().send(player);
+            return false;
+        }
+
+        Lang.COMMAND_SET_DONE.message().send(player, replacer -> replacer.replace(crate.replacePlaceholders()));
+        return true;
     }
 
     @NotNull

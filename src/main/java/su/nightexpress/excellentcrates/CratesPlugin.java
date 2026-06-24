@@ -13,6 +13,8 @@ import su.nightexpress.excellentcrates.data.DataHandler;
 import su.nightexpress.excellentcrates.data.DataManager;
 import su.nightexpress.excellentcrates.dialog.DialogRegistry;
 import su.nightexpress.excellentcrates.editor.EditorManager;
+import su.nightexpress.excellentcrates.display.CrateDisplayManager;
+import su.nightexpress.excellentcrates.bedrock.BedrockManager;
 import su.nightexpress.excellentcrates.hologram.HologramManager;
 import su.nightexpress.excellentcrates.hooks.impl.PlaceholderHook;
 import su.nightexpress.excellentcrates.key.KeyManager;
@@ -29,10 +31,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.stream.Stream;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.UUID;
 
 public class CratesPlugin extends NightPlugin {
 
     private final List<CratesAddon> addons = new ArrayList<>();
+    private final Set<UUID> resourcePackPlayers = new HashSet<>();
 
     private DialogRegistry dialogRegistry;
 
@@ -45,13 +56,15 @@ public class CratesPlugin extends NightPlugin {
     private KeyManager      keyManager;
     private CrateManager    crateManager;
     private EditorManager   editorManager;
+    private CrateDisplayManager displayManager;
+    private BedrockManager bedrockManager;
 
     private CrateLogger crateLogger;
 
     @Override
     @NotNull
     protected PluginDetails getDefaultDetails() {
-        return PluginDetails.create("Crates", new String[]{"crates", "ecrates", "excellentcrates", "crate", "case", "cases"})
+        return PluginDetails.create("TwiCrates", new String[]{"twicrates", "twicrate", "tcrate", "crates", "ecrates", "excellentcrates", "crate", "case", "cases"})
             .setConfigClass(Config.class)
             .setPermissionsClass(Perms.class);
     }
@@ -63,6 +76,7 @@ public class CratesPlugin extends NightPlugin {
 
     @Override
     protected void onStartup() {
+        this.migrateLegacyDataFolder();
         CratesAPI.load(this);
         Keys.load(this);
     }
@@ -91,7 +105,7 @@ public class CratesPlugin extends NightPlugin {
         this.userManager = new UserManager(this, this.dataHandler);
         this.userManager.setup();
 
-        if (Config.HOLOGRAMS_ENABLED.get()) {
+        if (Config.HOLOGRAMS_ENABLED.get() || Config.CRATE_PACKET_BASED_MODE.get()) {
             this.hologramManager = new HologramManager(this);
             this.hologramManager.setup();
         }
@@ -104,6 +118,14 @@ public class CratesPlugin extends NightPlugin {
 
         this.crateManager = new CrateManager(this, this.dialogRegistry);
         this.crateManager.setup();
+
+        if (this.getPluginManager().isPluginEnabled("Geyser-Spigot") || this.getPluginManager().isPluginEnabled("floodgate")) {
+            this.bedrockManager = new BedrockManager(this);
+            this.bedrockManager.setup();
+        }
+
+        this.displayManager = new CrateDisplayManager(this, this.crateManager, this.bedrockManager);
+        this.displayManager.setup();
 
         this.editorManager = new EditorManager(this, this.dialogRegistry);
         this.editorManager.setup();
@@ -123,6 +145,8 @@ public class CratesPlugin extends NightPlugin {
     @Override
     public void disable() {
         if (this.editorManager != null) this.editorManager.shutdown();
+        if (this.displayManager != null) this.displayManager.shutdown();
+        if (this.bedrockManager != null) this.bedrockManager.shutdown();
         if (this.openingManager != null) this.openingManager.shutdown();
         if (this.keyManager != null) this.keyManager.shutdown();
         if (this.crateManager != null) this.crateManager.shutdown();
@@ -144,6 +168,7 @@ public class CratesPlugin extends NightPlugin {
     @Override
     protected void onShutdown() {
         super.onShutdown();
+        this.resourcePackPlayers.clear();
         Keys.clear();
         CratesAPI.clear();
     }
@@ -166,7 +191,7 @@ public class CratesPlugin extends NightPlugin {
     }
 
     public boolean hasHolograms() {
-        return this.hologramManager != null && this.hologramManager.hasHandler();
+        return Config.HOLOGRAMS_ENABLED.get() && this.hologramManager != null && this.hologramManager.hasHandler();
     }
 
     @NotNull
@@ -212,5 +237,58 @@ public class CratesPlugin extends NightPlugin {
     @NotNull
     public CrateManager getCrateManager() {
         return this.crateManager;
+    }
+
+    private void migrateLegacyDataFolder() {
+        Path targetRoot = this.getDataFolder().toPath().toAbsolutePath().normalize();
+        Path parent = targetRoot.getParent();
+        if (parent == null) return;
+
+        Path sourceRoot = parent.resolve("ExcellentCrates").toAbsolutePath().normalize();
+        if (!Files.isDirectory(sourceRoot) || sourceRoot.equals(targetRoot)) return;
+
+        try {
+            if (Files.isDirectory(targetRoot)) {
+                try (Stream<Path> entries = Files.list(targetRoot)) {
+                    if (entries.findAny().isPresent()) return;
+                }
+            }
+
+            try (Stream<Path> paths = Files.walk(sourceRoot)) {
+                for (Path source : paths.toList()) {
+                    if (Files.isSymbolicLink(source)) continue;
+                    Path relative = sourceRoot.relativize(source);
+                    Path target = targetRoot.resolve(relative).normalize();
+                    if (!target.startsWith(targetRoot)) continue;
+
+                    if (Files.isDirectory(source)) Files.createDirectories(target);
+                    else {
+                        Files.createDirectories(target.getParent());
+                        Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
+                    }
+                }
+            }
+            this.info("Copied legacy ExcellentCrates data into the TwiCrates data folder.");
+        }
+        catch (IOException exception) {
+            this.error("Could not migrate the legacy ExcellentCrates data folder: " + exception.getMessage());
+        }
+    }
+
+    public Optional<CrateDisplayManager> getDisplayManager() {
+        return Optional.ofNullable(this.displayManager);
+    }
+
+    public Optional<BedrockManager> getBedrockManager() {
+        return Optional.ofNullable(this.bedrockManager);
+    }
+
+    public boolean hasLoadedResourcePack(@NotNull UUID playerId) {
+        return this.resourcePackPlayers.contains(playerId);
+    }
+
+    public void setResourcePackLoaded(@NotNull UUID playerId, boolean loaded) {
+        if (loaded) this.resourcePackPlayers.add(playerId);
+        else this.resourcePackPlayers.remove(playerId);
     }
 }

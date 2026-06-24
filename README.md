@@ -1,67 +1,134 @@
-# About
-<div align="center">
-  <img src="https://nightexpressdev.com/excellentcrates/header.png">
+# TwiCrates
 
-<a href="https://discord.gg/EwNFGsnGaW"><img src="https://img.shields.io/discord/903053383475277844?style=for-the-badge&label=Discord&color=%2333a8ff"></a>
-<a href="https://ko-fi.com/nightexpress"><img src="https://img.shields.io/badge/donate-%E2%9D%A4%EF%B8%8F_to_support-dff33?style=for-the-badge"></a>
-<a href="https://nightexpressdev.com/excellentcrates/"><img src="https://img.shields.io/badge/wiki-documentation-ff9c33?style=for-the-badge"></a>
+TwiCrates is a security-hardened ExcellentCrates fork focused on first-class Java and Bedrock presentation. It keeps the proven reward, cost, limit and opening pipeline intact while adding resource-pack crate models, Geyser/Floodgate-aware block views and native Bedrock forms.
 
-  ![](https://repo.nightexpressdev.com/api/badge/latest/releases/su/nightexpress/excellentcrates/ExcellentCrates?color=40c14a&name=ExcellentCrates&prefix=v)
+Original project by NightExpress. TwiCrates fork development by siberanka.
 
-**ExcellentCrates** is a lightweight, feature rich and highly customizable crates plugin.
+## Highlights
 
-<img src="https://nightexpressdev.com/img/excellentcrates/crate_editor.gif"><img src="https://nightexpressdev.com/img/excellentcrates/gui_opening.gif">
-<img src="https://nightexpressdev.com/img/excellentcrates/block_opening.gif"><img src="https://nightexpressdev.com/img/excellentcrates/promo_crate_preview.gif">
-<img src="https://nightexpressdev.com/img/excellentcrates/selective_opening.gif">
-</div>
+- Packet-based, per-player Java resource-pack models using `ItemDisplay`, modern `Item_Model`, legacy `Custom_Model_Data`, scale, offset and yaw controls.
+- Per-crate Bedrock/Geyser blocks. A Bedrock player can see a chest, barrel or another safe vanilla block where a Java player sees the resource-pack model.
+- Placement-specific cardinal facing. The Java model and directional Bedrock block use the same stored direction.
+- Native Bedrock crate overview, paginated reward browser, reward details and cost-selection forms through Geyser/Floodgate Cumulus.
+- Resource-pack status gating: models can be hidden until a Java client reports that the pack loaded successfully.
+- Automatic Bedrock re-synchronization after join, teleport, respawn, world/chunk movement and periodic server block refreshes.
+- Existing crate rewards, costs, limits, cooldowns, openings, keys, holograms and particles remain on the ExcellentCrates pipeline.
+- Backward-compatible Java packages/API and command aliases. `plugin.yml` also provides the `ExcellentCrates` capability for integrations.
 
-## Features
-- [**GUI Editor**](https://nightexpressdev.com/excellentcrates/editor-gui/). Manage your crates, rewards and keys right in game!
-- [**Custom Item Support**](https://nightexpressdev.com/excellentcrates/hooks/custom-items/). Supports custom item plugins, such as Nexo, ItemsAdder, Oraxen, ExecutableItems, MMOItems, etc.
-- [**Built-in Holograms**](https://nightexpressdev.com/excellentcrates/hooks/holograms/). Display custom holograms above crate blocks!
-- [**Particle Effects**](https://nightexpressdev.com/excellentcrates/crates/placement#particle-effects). Display amazing particles around crate blocks!
-- [**Crate Items**](https://nightexpressdev.com/excellentcrates/crates/appearance/). Give crates directly to player's inventories!
-- [**Crate Blocks**](https://nightexpressdev.com/excellentcrates/crates/placement). Create crate zones by linking crates with any blocks!
-- [**Physical Keys**](https://nightexpressdev.com/excellentcrates/keys/setup/). Give crate keys directly to player's inventories!
-- [**Virtual Keys**](https://nightexpressdev.com/excellentcrates/keys/virtual-keys/). Keep crate keys as virtual to prevent sharing, trading or selling them!
-- [**Custom Previews**](https://nightexpressdev.com/excellentcrates/crates/previews/). Create custom and unique preview GUI for every crate!
-- [**Custom Openings**](https://nightexpressdev.com/excellentcrates/crates/openings/). Crate custom and unique opening GUI for every crate!
-- [**Milestones**](https://nightexpressdev.com/excellentcrates/crates/milestones/). Reward players for opening certain amount of a crate in a row!
-- Mass Open. Open all your crate keys in a single click!
-- [**Open Cooldown**](https://nightexpressdev.com/excellentcrates/crates/open-cooldown/). Set per player open cooldown for a crate!
-- [**Open Cost**](https://nightexpressdev.com/excellentcrates/crates/open-cost/). Set per player currency cost to open a crate!
-- [**Permission Requirements**](https://nightexpressdev.com/excellentcrates/crates/open-permission/). Assign permission requirement to a crate!
-- [**Key Requirements**](https://nightexpressdev.com/excellentcrates/crates/key-requirements/). Assign multiple key requirements to the same crate!
-- Pushback. Push players away from a crate block if they don't met the requirements!
-- [**Rarities**](https://nightexpressdev.com/excellentcrates/rewards/rarity-weights/). Split your rewards by rarity affecting their roll chance!
-- [**Weights**](https://nightexpressdev.com/excellentcrates/rewards/rarity-weights/). Balance your reward's and rarity's chances with auto-scalable weight system!
-- Selectable Rewards. Select rewards from a crate with no gambling!
-- [**Reward Types**](https://nightexpressdev.com/excellentcrates/rewards/setup/). Create Item or Command rewards!
-- [**Reward Items**](https://nightexpressdev.com/excellentcrates/rewards/setup#setup-item-reward). Bundle up to 27 custom items per Item Reward!
-- [**Reward Commands**](https://nightexpressdev.com/excellentcrates/rewards/setup#setup-command-reward). Bundle unlimited amount of commands per Command Reward!
-- [**Reward Permissions**](https://nightexpressdev.com/excellentcrates/rewards/permissions/). Prevent players from receiving a reward if they do/don't have certain permissions!
-- Reward Broadcast. Broadcast a custom message when player received certain reward(s)!
-- [**Reward Limits**](https://nightexpressdev.com/excellentcrates/rewards/roll-limits/). Limit how many times a reward can be rolled out on global and/or per-player basis!
-- Reward Logs. Log all reward rolls in a dedicated log file!
-- [**PlaceholderAPI**](https://nightexpressdev.com/excellentcrates/hooks/placeholder_api/) Support!
+## Safe display design
 
-## System Requirements
-- Server Software: [**Spigot**](https://www.spigotmc.org/link-forums/88/) or [**Paper**](https://papermc.io/downloads/paper)
-- Server Version: <span style="color:red">**1.21.8**</span> or above
-- Java Version: [**21**](https://adoptium.net/temurin/releases) or above
-- Dependencies:
-    - [**nightcore**](https://nightexpressdev.com/nightcore/) - Plugin engine.
-- Optional Plugins:
-    - [**PacketEvents**](https://spigotmc.org/resources/80279/) or [**ProtocolLib**](https://ci.dmulloy2.net/job/ProtocolLib/) - Crate holograms.
-- Folia Supported: <span style="color:red">**No**</span>
-- Forge Supported: <span style="color:red">**No**</span>
+TwiCrates does not replace or break the real linked server block. The real block remains the authoritative interaction and collision point. Java players receive a lightweight, non-persistent model display; Bedrock players receive a client-side vanilla block view at the same coordinates.
 
-## Links
-- [SpigotMC](https://spigotmc.org/resources/48732/)
-- [Hangar](https://hangar.papermc.io/NightExpress/ExcellentCrates)
-- [Modrinth](https://modrinth.com/plugin/excellentcrates)
-- [Documentation](https://nightexpressdev.com/excellentcrates/)
-- [Developer API](https://nightexpressdev.com/excellentcrates/developer-api/)
+Use `BARRIER` as the real linked block when possible. It is solid and visually empty on Java, so the model can occupy the space without spawning a removable armor stand or turning a display entity into the authoritative crate.
 
-## Donate
-If you like my work or enjoy using my plugins, feel free to [Buy me a coffee](https://ko-fi.com/nightexpress) :) Thank you! 🧡
+This design avoids item drops, model-entity pickup, piston desynchronization, ghost blocks and chunk-save duplication. Linked blocks are protected against breaking, explosions, piston movement and entity block conversion. Inventory-holder blocks are rejected by `/twicrate set` so linking a crate cannot trap or expose container contents.
+
+## Requirements
+
+- Java 21 or newer
+- Spigot/Paper 1.21.8 or newer (compiled against 1.21.10 API)
+- NightCore `2.16.1-fork`
+- Optional: Geyser-Spigot and/or Floodgate for Bedrock detection and native forms
+- Optional: PacketEvents (preferred) or ProtocolLib for packet-based Java models and holograms
+
+TwiCrates currently follows the upstream plugin's non-Folia scheduler model.
+
+## Quick setup
+
+1. Install TwiCrates and its matching NightCore build.
+2. Configure the crate's `Block.Display` section in `plugins/TwiCrates/crates/<crate>.yml`.
+3. Place a barrier or another non-container solid block.
+4. Look directly at the block and run `/twicrate set vote`.
+5. Reload TwiCrates after manual YAML changes.
+
+The placement faces toward the player who runs the command. Fine-tune model orientation with `Yaw_Offset`. TwiCrates writes detailed English comments into every saved crate YAML.
+
+Packet rendering is enabled by default in `config.yml`:
+
+```yaml
+Crate:
+  Packet-Based_Mode: true
+```
+
+When enabled, both Java crate models and holograms use the detected packet backend; PacketEvents is preferred when both integrations are installed. Crate models safely fall back to managed Bukkit `ItemDisplay` entities if neither backend is available or a packet backend fails at runtime. Setting it to `false` uses Bukkit entities for crate models, while holograms keep their existing packet implementation.
+
+## Crate display example
+
+```yaml
+Block:
+  Display:
+    Enabled: true
+    Default_Facing: SOUTH
+    # Managed by TwiCrates. Each entry is x,y,z,world,DIRECTION.
+    Facings: []
+    Java:
+      Enabled: true
+      Model:
+        Material: PAPER
+        # Use either the modern item-model key, legacy CMD, or both.
+        Item_Model: 'twicrates:vote_crate'
+        Custom_Model_Data: 10001
+      Scale: 1.0
+      Y_Offset: 0.5
+      Yaw_Offset: 0.0
+      Require_Accepted_Resource_Pack: false
+    Bedrock:
+      Enabled: true
+      # A material or full Bukkit block-data string is accepted.
+      # Directional/rotatable data is overwritten with the placement facing.
+      Block: CHEST
+      Forms:
+        Enabled: true
+```
+
+Useful Bedrock block examples include `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_SPAWNER` and a full value such as `minecraft:chest[type=single,waterlogged=false,facing=north]`. Invalid, air or non-block values safely fall back to `CHEST`.
+
+## Commands and permissions
+
+- `/twicrate set <crate>` — links the targeted non-container block and records its facing.
+- `/twicrate reload` — reloads the plugin and recreates displays.
+- All original ExcellentCrates aliases remain available, including `/crates` and `/excellentcrates`.
+
+The new placement permission is `twicrates.command.set`. Existing ExcellentCrates permissions remain unchanged for compatibility.
+
+## Bedrock behavior
+
+When a local Geyser or Floodgate API is available, Bedrock players receive:
+
+- a configured vanilla block instead of the Java item model;
+- the same north/east/south/west orientation as the Java model;
+- native forms for crate details, paginated rewards, reward descriptions and cost selection;
+- core restriction, permission, cooldown, inventory-space, affordability and opening-availability checks immediately before an opening;
+- the normal Geyser-translated opening animation, hologram and particle pipeline after the form selection.
+
+If the platform API is unavailable or forms are disabled for a crate, TwiCrates falls back to the upstream inventory interaction. No reward is issued from a form callback; forms only select an action, then the existing authoritative opening pipeline performs every validation and reward operation.
+
+## Reliability and security controls
+
+- All Bukkit world, entity, inventory and opening actions run on the server thread.
+- Form callbacks revalidate player state, crate ownership and source location.
+- A per-player action debounce prevents repeated Bedrock form responses from starting duplicate openings.
+- Display scale and offsets are bounded; form text, reward pages and block updates are capped.
+- Packet mode creates no server-side Java model entities. Per-player viewer sets are distance/chunk bounded and cleared on quit, chunk unload, reload and shutdown.
+- The Bukkit fallback uses non-persistent, invulnerable, gravity-free displays tracked by UUID and removed on chunk unload/plugin shutdown.
+- Online players are resynchronized after startup/reload and again after join, teleport, respawn, world change and chunk movement; a bounded periodic reconciliation repairs missed client packets.
+- Player/resource-pack/form tracking is cleared on quit and shutdown.
+- Invalid model materials, item-model keys and Bedrock block data fail closed to safe defaults.
+- No shell, expression-language, reflection-selected command or user-controlled class loading is exposed by the new features.
+- TwiCrates does not add Log4j and does not log raw form payloads.
+
+These controls reduce the attack surface for memory leaks, dupes, command injection, crashes and lag. Production operators should still test their exact Geyser version, Bedrock resource pack, custom model geometry and opening providers on a staging server before rollout.
+
+## Build
+
+```powershell
+$env:JAVA_HOME = 'F:\vds\Java\jdk-25.0.2+10'
+$env:JAVA_TOOL_OPTIONS = '-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT'
+mvn clean package
+```
+
+The plugin jar is produced under `target/TwiCrates-<version>.jar`.
+
+## License
+
+TwiCrates remains distributed under the repository's GPL-3.0 license. See `LICENSE`.

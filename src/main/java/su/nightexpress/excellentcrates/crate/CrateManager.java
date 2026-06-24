@@ -8,6 +8,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.InventoryHolder;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import su.nightexpress.excellentcrates.CratesPlugin;
@@ -100,7 +101,8 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
 
         this.addListener(new CrateListener(this.plugin, this));
 
-        this.addAsyncTask(this::playCrateEffects, 1L);
+        // Particle/world access must stay on the server thread for Paper/Geyser stability.
+        this.addTask(this::playCrateEffects, 1L);
         this.addAsyncTask(this::saveCrates, Config.CRATE_SAVE_INTERVAL.get());
     }
 
@@ -388,6 +390,7 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
         }
 
         crate.removeHologram();
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.remove(crate));
 
         this.plugin.getDataManager().handleCrateRemoval(crate);
         this.crateByIdMap.remove(crate.getId());
@@ -420,13 +423,27 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
 
         Crate crate = this.getCrateById(crateId);
         if (crate != null) {
-            crate.clearBlockPositions();
-            crate.addBlockPosition(block.getLocation());
-            crate.recreateHologram();
-            crate.markDirty();
-            this.plugin.getEditorManager().openOptionsMenu(player, crate);
+            if (this.linkCrateBlock(player, crate, block)) {
+                this.plugin.getEditorManager().openOptionsMenu(player, crate);
+            }
         }
 
+        return true;
+    }
+
+    public boolean linkCrateBlock(@NotNull Player player, @NotNull Crate crate, @NotNull Block block) {
+        if (block.isEmpty() || block.isLiquid() || block.getState() instanceof InventoryHolder) return false;
+
+        Crate existing = this.getCrateByBlock(block);
+        if (existing != null && existing != crate) return false;
+
+        crate.removeHologram();
+        crate.clearBlockPositions();
+        crate.addBlockPosition(block.getLocation(), player.getFacing().getOppositeFace());
+        crate.recreateHologram();
+        crate.markDirty();
+        crate.saveIfDirty();
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.refresh(crate));
         return true;
     }
 

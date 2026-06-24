@@ -39,9 +39,11 @@ public class HologramManager extends AbstractManager<CratesPlugin> {
     @Override
     protected void onLoad() {
         if (this.detectHandler()) {
-            this.addListener(new HologramListener(this.plugin, this));
-
-            this.addAsyncTask(this::tickHolograms, Config.CRATE_HOLOGRAM_UPDATE_INTERVAL.get());
+            if (Config.HOLOGRAMS_ENABLED.get()) {
+                this.addListener(new HologramListener(this.plugin, this));
+                // Packet creation touches Bukkit worlds, players and PlaceholderAPI; keep it on the server thread.
+                this.addTask(this::tickHolograms, Config.CRATE_HOLOGRAM_UPDATE_INTERVAL.get());
+            }
         }
     }
 
@@ -55,15 +57,25 @@ public class HologramManager extends AbstractManager<CratesPlugin> {
 
     private boolean detectHandler() {
         if (Plugins.isInstalled(HookId.PACKET_EVENTS)) {
-            this.handler = new HologramPacketsHandler();
+            try {
+                this.handler = new HologramPacketsHandler();
+            }
+            catch (RuntimeException | LinkageError exception) {
+                this.plugin.warn("Could not initialize the PacketEvents display backend: " + exception.getClass().getSimpleName());
+            }
         }
-        else if (Plugins.isInstalled(HookId.PROTOCOL_LIB)) {
-            this.handler = new HologramProtocolHandler();
+        if (this.handler == null && Plugins.isInstalled(HookId.PROTOCOL_LIB)) {
+            try {
+                this.handler = new HologramProtocolHandler();
+            }
+            catch (RuntimeException | LinkageError exception) {
+                this.plugin.warn("Could not initialize the ProtocolLib display backend: " + exception.getClass().getSimpleName());
+            }
         }
-        else {
+        if (this.handler == null) {
             this.plugin.warn("*".repeat(25));
-            this.plugin.warn("You have no packet library plugins installed for the Holograms feature to work.");
-            this.plugin.warn("Please install one of the following plugins to enable crate holograms: " + HookId.PACKET_EVENTS + " or " + HookId.PROTOCOL_LIB);
+            this.plugin.warn("No supported packet library is installed for holograms or packet-based crate models.");
+            this.plugin.warn("Install " + HookId.PACKET_EVENTS + " (preferred) or " + HookId.PROTOCOL_LIB + ". Crate models will use the Bukkit fallback meanwhile.");
             this.plugin.warn("*".repeat(25));
         }
 
@@ -80,6 +92,11 @@ public class HologramManager extends AbstractManager<CratesPlugin> {
 
     public boolean hasHandler() {
         return this.handler != null;
+    }
+
+    @Nullable
+    public HologramHandler getPacketHandler() {
+        return this.handler;
     }
 
     @Nullable
@@ -148,6 +165,7 @@ public class HologramManager extends AbstractManager<CratesPlugin> {
 
 
     public void render(@NotNull Crate crate) {
+        if (!Config.HOLOGRAMS_ENABLED.get()) return;
         this.createIfAbsent(crate);
 
         FakeDisplay display = this.getDisplay(crate);

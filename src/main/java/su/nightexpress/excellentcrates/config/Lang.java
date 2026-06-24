@@ -42,6 +42,7 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_KEY_INSPECT_DESC    = LangEntry.builder("Command.Key.Show.Desc").text("Inspect [player's] virtual keys.");
     public static final TextLocale COMMAND_PREVIEW_DESC        = LangEntry.builder("Command.Preview.Desc").text("Open crate preview.");
     public static final TextLocale COMMAND_RESET_COOLDOWN_DESC = LangEntry.builder("Command.ResetCooldown.Desc").text("Reset player's crate open cooldown.");
+    public static final TextLocale COMMAND_SET_DESC            = LangEntry.builder("Command.Set.Desc").text("Link the targeted block to a crate with per-platform display facing.");
     public static final TextLocale COMMAND_MENU_DESC           = LangEntry.builder("Command.Menu.Desc").text("Open crate menu.");
 
     public static final MessageLocale COMMAND_DROP_DONE = LangEntry.builder("Command.Drop.Done").chatMessage(
@@ -123,6 +124,12 @@ public class Lang implements LangContainer {
         SOFT_RED.wrap(BOLD.wrap("Inventory is Full!")),
         GRAY.wrap("Clean up inventory to open crates."),
         Sound.ENTITY_VILLAGER_NO
+    );
+    public static final MessageLocale COMMAND_SET_DONE = LangEntry.builder("Command.Set.Done").chatMessage(
+        GRAY.wrap("Linked " + SOFT_YELLOW.wrap(CRATE_NAME) + " to the targeted block. Facing and Java/Bedrock views were synchronized.")
+    );
+    public static final MessageLocale COMMAND_SET_ERROR_BLOCK = LangEntry.builder("Command.Set.Error.Block").chatMessage(
+        SOFT_RED.wrap("Target a non-air, non-liquid block within 8 blocks. Inventory blocks and blocks owned by another crate are rejected.")
     );
 
     public static final MessageLocale CRATE_OPEN_ERROR_COOLDOWN_TEMPORARY = LangEntry.builder("Crate.Open.Error.Cooldown.Temporary").titleMessage(
@@ -263,7 +270,7 @@ public class Lang implements LangContainer {
         )
         .build();
 
-    public static final TextLocale EDITOR_TITLE_MAIN             = LangEntry.builder("Editor.Title.Main").text(BLACK.wrap("ExcellentCrates Editor"));
+    public static final TextLocale EDITOR_TITLE_MAIN             = LangEntry.builder("Editor.Title.Main").text(BLACK.wrap("TwiCrates Editor"));
     public static final TextLocale EDITOR_TITLE_CRATE_LIST       = LangEntry.builder("Editor.Title.Crates").text(BLACK.wrap("Crates Editor"));
     public static final TextLocale EDITOR_TITLE_CRATE_SETTINGS   = LangEntry.builder("Editor.Title.Crate.Settings").text(BLACK.wrap("Crate Settings"));
     public static final TextLocale EDITOR_TITLE_CRATE_COSTS      = LangEntry.builder("Editor.Title.Crate.CostOptions").text(BLACK.wrap("Cost Options"));

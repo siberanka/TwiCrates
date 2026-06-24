@@ -38,6 +38,11 @@ public class FakeEntityGroup {
         this.humanViewers.clear();
     }
 
+    @NotNull
+    public Set<UUID> getViewerIds() {
+        return Set.copyOf(this.humanViewers);
+    }
+
     public void addEntity(@NotNull FakeEntity entity) {
         this.entities.add(entity);
     }

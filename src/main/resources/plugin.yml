@@ -1,11 +1,14 @@
 main: su.nightexpress.excellentcrates.CratesPlugin
 version: '${project.version}'
-name: ExcellentCrates
-author: NightExpress
-desciption: Lightweight, powerful, feature-rich and highly customizable crates plugin.
+name: TwiCrates
+authors: [ NightExpress, siberanka ]
+description: Secure cross-platform crates with Java resource-pack models and native Bedrock support.
+provides: [ ExcellentCrates ]
 depend: [ nightcore ]
 softdepend:
   - PlaceholderAPI
   - ProtocolLib
   - packetevents
+  - Geyser-Spigot
+  - floodgate
 api-version: 1.21

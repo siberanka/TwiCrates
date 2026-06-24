@@ -106,6 +106,15 @@ public class Config {
         "Sets the Link Tool item layout."
     );
 
+    public static final ConfigValue<Boolean> CRATE_PACKET_BASED_MODE = ConfigValue.create("Crate.Packet-Based_Mode",
+        true,
+        "Controls whether Java crate models are rendered as per-player packet entities.",
+        "When enabled, both crate holograms and Java crate models use the same PacketEvents/ProtocolLib backend.",
+        "PacketEvents is preferred when both packet libraries are installed.",
+        "If no supported packet library is available, crate models safely fall back to managed Bukkit ItemDisplay entities.",
+        "[Default is true]"
+    );
+
     public static final ConfigValue<Boolean> CRATE_ALLOW_CRATES_IN_AIR_BLOCKS = ConfigValue.create("Crate.Allow_Crates_In_Air_Blocks",
         false,
         "When enabled allows crates to be assigned to 'air' blocks and disables block validation on crate load."
