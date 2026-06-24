@@ -189,7 +189,13 @@ public class BaseCommands {
                 CommandArguments.forCrate(plugin),
                 CommandArguments.forModelPhase(),
                 CommandArguments.forModelProvider(),
-                CommandArguments.string(CommandArguments.MODEL, Lang.COMMAND_ARGUMENT_NAME_MODEL, this::getAllModelIds)
+                Commands.argument(CommandArguments.MODEL, (context, string) -> string)
+                    .localized(Lang.COMMAND_ARGUMENT_NAME_MODEL)
+                    .suggestions((reader, context) -> this.getModelIds(context)),
+                Commands.argument(CommandArguments.STATE, (context, string) -> string)
+                    .localized(Lang.COMMAND_ARGUMENT_NAME_STATE)
+                    .suggestions((reader, context) -> this.getModelStates(context))
+                    .optional()
             )
             .executes(this::setCrateModel)
         );
@@ -236,16 +242,20 @@ public class BaseCommands {
         String phase = arguments.getString(CommandArguments.PHASE);
         CrateModelProvider provider = arguments.get(CommandArguments.PROVIDER, CrateModelProvider.class);
         String modelId = arguments.getString(CommandArguments.MODEL, "");
+        String state = arguments.getString(CommandArguments.STATE, "");
         if (!ExternalProviderBridge.isSafeId(modelId, 128)) return false;
+        if (!state.isBlank() && !ExternalProviderBridge.isSafeId(state, 128)) return false;
 
         JavaCrateModel model = getPhaseModel(crate, phase);
         model.setProvider(provider);
         if (provider == CrateModelProvider.ITEM_MODEL) {
             model.setItemModel(modelId);
             model.setProviderModelId("");
+            model.setProviderState("");
         }
         else {
             model.setProviderModelId(modelId);
+            model.setProviderState(state);
         }
 
         crate.markDirty();
@@ -254,7 +264,7 @@ public class BaseCommands {
         Lang.COMMAND_MODEL_DONE.message().send(context.getSender(), replacer -> replacer
             .replace(crate.replacePlaceholders())
             .replace(Placeholders.GENERIC_TYPE, phase + "/" + provider.getId())
-            .replace(Placeholders.GENERIC_VALUE, modelId)
+            .replace(Placeholders.GENERIC_VALUE, model.getProviderState().isBlank() ? modelId : modelId + "#" + model.getProviderState())
         );
         return true;
     }
@@ -303,13 +313,22 @@ public class BaseCommands {
     }
 
     @NotNull
-    private List<String> getAllModelIds() {
-        List<String> ids = new ArrayList<>();
-        ids.add("twicrates:example_model");
-        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.BETTERMODEL));
-        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.MODELENGINE));
-        ids.addAll(ExternalProviderBridge.listModelIds(CrateModelProvider.MYTHICMOBS));
-        return ids.stream().distinct().limit(512).toList();
+    private List<String> getModelIds(@NotNull CommandContext context) {
+        CrateModelProvider provider = context.getArguments().getOr(CommandArguments.PROVIDER, CrateModelProvider.class, CrateModelProvider.ITEM_MODEL);
+        if (provider == CrateModelProvider.ITEM_MODEL) return List.of("twicrates:example_model");
+        return ExternalProviderBridge.listModelIds(provider);
+    }
+
+    @NotNull
+    private List<String> getModelStates(@NotNull CommandContext context) {
+        CrateModelProvider provider = context.getArguments().getOr(CommandArguments.PROVIDER, CrateModelProvider.class, CrateModelProvider.ITEM_MODEL);
+        if (provider != CrateModelProvider.BETTERMODEL && provider != CrateModelProvider.MODELENGINE) return List.of();
+
+        String modelId = context.getArguments().getString(CommandArguments.MODEL, "");
+        List<String> states = new ArrayList<>();
+        states.add("default");
+        states.addAll(ExternalProviderBridge.listModelStates(provider, modelId));
+        return states.stream().distinct().limit(512).toList();
     }
 
     @NotNull

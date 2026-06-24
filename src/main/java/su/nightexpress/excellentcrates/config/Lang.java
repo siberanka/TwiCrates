@@ -22,6 +22,7 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_ARGUMENT_NAME_PHASE = LangEntry.builder("Command.Argument.Name.Phase").text("phase");
     public static final TextLocale COMMAND_ARGUMENT_NAME_PROVIDER = LangEntry.builder("Command.Argument.Name.Provider").text("provider");
     public static final TextLocale COMMAND_ARGUMENT_NAME_MODEL = LangEntry.builder("Command.Argument.Name.Model").text("model");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_STATE = LangEntry.builder("Command.Argument.Name.State").text("state");
     public static final TextLocale COMMAND_ARGUMENT_NAME_REWARD = LangEntry.builder("Command.Argument.Name.Reward").text("reward");
     public static final TextLocale COMMAND_ARGUMENT_NAME_ITEM = LangEntry.builder("Command.Argument.Name.Item").text("item");
     public static final TextLocale COMMAND_ARGUMENT_NAME_X     = LangEntry.builder("Command.Argument.Name.X").text("x");
@@ -54,7 +55,7 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_PREVIEW_DESC        = LangEntry.builder("Command.Preview.Desc").text("Open crate preview.");
     public static final TextLocale COMMAND_RESET_COOLDOWN_DESC = LangEntry.builder("Command.ResetCooldown.Desc").text("Reset player's crate open cooldown.");
     public static final TextLocale COMMAND_SET_DESC            = LangEntry.builder("Command.Set.Desc").text("Link the targeted block to a crate with per-platform display facing.");
-    public static final TextLocale COMMAND_MODEL_DESC          = LangEntry.builder("Command.Model.Desc").text("Select a crate display model from item_model, BetterModel, ModelEngine or MythicMobs.");
+    public static final TextLocale COMMAND_MODEL_DESC          = LangEntry.builder("Command.Model.Desc").text("Select a crate display model and optional BetterModel/ModelEngine state.");
     public static final TextLocale COMMAND_CRAFTENGINE_DESC    = LangEntry.builder("Command.CraftEngine.Desc").text("Select CraftEngine items for crate base items or rewards.");
     public static final TextLocale COMMAND_CRAFTENGINE_BASE_DESC = LangEntry.builder("Command.CraftEngine.Base.Desc").text("Set a crate item from a CraftEngine custom item id.");
     public static final TextLocale COMMAND_CRAFTENGINE_REWARD_DESC = LangEntry.builder("Command.CraftEngine.Reward.Desc").text("Add a CraftEngine custom item id to an item reward.");

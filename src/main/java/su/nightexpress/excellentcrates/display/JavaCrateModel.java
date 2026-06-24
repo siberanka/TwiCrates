@@ -18,6 +18,7 @@ public final class JavaCrateModel {
     private String itemModel;
     private CrateModelProvider provider;
     private String providerModelId;
+    private String providerState;
 
     public JavaCrateModel(boolean enabled, @NotNull Material material, int customModelData, @Nullable String itemModel) {
         this.setEnabled(enabled);
@@ -26,6 +27,7 @@ public final class JavaCrateModel {
         this.setItemModel(itemModel);
         this.provider = CrateModelProvider.ITEM_MODEL;
         this.providerModelId = "";
+        this.providerState = "";
     }
 
     @NotNull
@@ -111,11 +113,30 @@ public final class JavaCrateModel {
         this.providerModelId = trimmed.length() <= 128 && trimmed.chars().noneMatch(ch -> ch < 32 || ch == 127) ? trimmed : "";
     }
 
+    /**
+     * Optional provider animation/state name. An empty value lets the provider use its native default state.
+     */
+    @NotNull
+    public String getProviderState() {
+        return this.providerState;
+    }
+
+    public void setProviderState(@Nullable String state) {
+        if (state == null || state.isBlank() || state.equalsIgnoreCase("default")) {
+            this.providerState = "";
+            return;
+        }
+
+        String trimmed = state.trim();
+        this.providerState = trimmed.length() <= 128 && trimmed.chars().noneMatch(ch -> ch < 32 || ch == 127) ? trimmed : "";
+    }
+
     @NotNull
     public String getSourceName() {
         if (this.provider == CrateModelProvider.ITEM_MODEL) {
             return this.itemModel.isBlank() ? this.material.name() + ":" + this.customModelData : this.itemModel;
         }
-        return this.provider.getId() + ":" + (this.providerModelId.isBlank() ? "-" : this.providerModelId);
+        String source = this.provider.getId() + ":" + (this.providerModelId.isBlank() ? "-" : this.providerModelId);
+        return this.providerState.isBlank() ? source : source + "#" + this.providerState;
     }
 }

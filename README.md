@@ -7,7 +7,7 @@ Original project by NightExpress. TwiCrates fork development by siberanka.
 ## Highlights
 
 - Packet-based, per-player Java resource-pack models using `ItemDisplay`, modern `Item_Model`, legacy `Custom_Model_Data`, scale, offset and yaw controls.
-- Optional external model selection from BetterModel, ModelEngine and MythicMobs IDs through commands and paginated editor menus.
+- Optional external model selection from BetterModel, ModelEngine and MythicMobs IDs through commands and paginated editor menus, including BetterModel/ModelEngine animation-state discovery.
 - Per-crate Bedrock/Geyser blocks. A Bedrock player can see a chest, barrel or another safe vanilla block where a Java player sees the resource-pack model.
 - Placement-specific cardinal facing. The Java model and directional Bedrock block use the same stored direction.
 - Native Bedrock crate overview, paginated reward browser, reward details and cost-selection forms through Geyser/Floodgate Cumulus.
@@ -70,6 +70,7 @@ Block:
         Idle:
           Provider: item_model
           Model_Id:
+          State:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_idle'
           Custom_Model_Data: 10001
@@ -77,6 +78,7 @@ Block:
           Enabled: true
           Provider: item_model
           Model_Id:
+          State:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_opening'
           Custom_Model_Data: 10002
@@ -84,6 +86,7 @@ Block:
           Enabled: true
           Provider: item_model
           Model_Id:
+          State:
           Material: PAPER
           Item_Model: 'twicrates:vote_crate_closing'
           Custom_Model_Data: 10003
@@ -108,15 +111,15 @@ Animation:
 
 Opening and closing models are per-player in packet mode: the opener sees the active phase while other players keep the idle model. If the opening model/block is disabled or empty, idle remains visible. If closing is absent, the display returns directly to idle after reward delivery. The Bukkit fallback applies the safest aggregate phase globally because server entities cannot carry different item metadata per viewer.
 
-For Java model phases, `Provider: item_model` keeps the resource-pack `ItemDisplay` path. `Provider: bettermodel`, `modelengine` or `mythicmobs` stores the selected provider model id in `Model_Id`; if that provider is absent, not loaded yet or cannot expose the id safely, TwiCrates keeps the item-model fallback instead of crashing.
+For Java model phases, `Provider: item_model` keeps the resource-pack `ItemDisplay` path. `Provider: bettermodel`, `modelengine` or `mythicmobs` stores the selected provider model id in `Model_Id`. BetterModel and ModelEngine models can additionally set `State` to one of the animations exposed by that concrete model (for example `idle`, `open` or `close`); an empty value uses the provider default. If a provider is absent, not loaded yet or cannot expose the id/state safely, TwiCrates keeps the item-model fallback instead of crashing.
 
-The crate editor exposes **Java & Bedrock Display**, **External Model Browser** and **CraftEngine Base Item** actions. The external model browser is paginated and cycles idle/opening/closing plus item_model/BetterModel/ModelEngine/MythicMobs providers. Reward item content has a **CraftEngine Items** browser for adding CraftEngine custom items directly. The existing **Opening Animation** dialog also edits reward-delivery and closing-state durations. All labels and Bedrock form text use the normal TwiCrates language-entry system.
+The crate editor exposes **Java & Bedrock Display**, **External Model Browser** and **CraftEngine Base Item** actions. The external model browser is paginated and cycles idle/opening/closing plus item_model/BetterModel/ModelEngine/MythicMobs providers. Selecting a BetterModel or ModelEngine model opens a second paginated state browser populated from that model's live API; `default` clears the explicit state. Reward item content has a **CraftEngine Items** browser for adding CraftEngine custom items directly. The existing **Opening Animation** dialog also edits reward-delivery and closing-state durations. All labels and Bedrock form text use the normal TwiCrates language-entry system.
 
 Useful Bedrock block examples include `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_SPAWNER` and a full value such as `minecraft:chest[type=single,waterlogged=false,facing=north]`. Invalid, air or non-block values safely fall back to `CHEST`.
 
 ## Commands and permissions
 
-- `/twicrate model <crate> <idle|opening|closing> <item_model|bettermodel|modelengine|mythicmobs> <id>` - sets the Java display model source with tab-completed provider IDs when the provider API is present.
+- `/twicrate model <crate> <idle|opening|closing> <item_model|bettermodel|modelengine|mythicmobs> <id> [state]` - sets the Java display model source; model IDs and BetterModel/ModelEngine states are context-aware tab completions. Use `default` or omit the state to clear an explicit state.
 - `/twicrate craftengine base <crate> <item-id>` - sets the crate base item from a CraftEngine custom item.
 - `/twicrate craftengine reward <crate> <reward-id> <item-id> [amount]` - adds a CraftEngine custom item to an item reward.
 

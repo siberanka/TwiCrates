@@ -22,6 +22,7 @@ public class CommandArguments {
     public static final String PHASE  = "phase";
     public static final String PROVIDER = "provider";
     public static final String MODEL  = "model";
+    public static final String STATE  = "state";
     public static final String REWARD = "reward";
     public static final String ITEM   = "item";
     public static final String AMOUNT = "amount";

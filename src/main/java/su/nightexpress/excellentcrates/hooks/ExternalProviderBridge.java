@@ -49,6 +49,23 @@ public final class ExternalProviderBridge {
         }
     }
 
+    /** Returns bounded animation/state names for a concrete provider model. */
+    @NotNull
+    public static List<String> listModelStates(@NotNull CrateModelProvider provider, @Nullable String modelId) {
+        if (!provider.isExternal() || !isSafeId(modelId, 128)) return List.of();
+
+        try {
+            return switch (provider) {
+                case BETTERMODEL -> listBetterModelStates(modelId);
+                case MODELENGINE -> listModelEngineStates(modelId);
+                default -> List.of();
+            };
+        }
+        catch (Throwable ignored) {
+            return List.of();
+        }
+    }
+
     @NotNull
     public static List<String> listCraftEngineItemIds() {
         if (!isPluginEnabled("CraftEngine")) return List.of();
@@ -140,6 +157,27 @@ public final class ExternalProviderBridge {
     }
 
     @NotNull
+    private static List<String> listBetterModelStates(@NotNull String modelId) throws ReflectiveOperationException {
+        if (!isPluginEnabled("BetterModel")) return List.of();
+
+        Class<?> clazz = Class.forName("kr.toxicity.model.api.BetterModel");
+        Object optional = invokeStatic(clazz, "model", new Class<?>[]{String.class}, modelId);
+        Object renderer = optional instanceof Optional<?> value ? value.orElse(null) : optional;
+        Object animations = renderer == null ? null : invoke(renderer, "animations");
+        return animations instanceof Map<?, ?> map ? normalized(map.keySet().stream().map(String::valueOf).toList()) : List.of();
+    }
+
+    @NotNull
+    private static List<String> listModelEngineStates(@NotNull String modelId) throws ReflectiveOperationException {
+        if (!isPluginEnabled("ModelEngine")) return List.of();
+
+        Class<?> clazz = Class.forName("com.ticxo.modelengine.api.ModelEngineAPI");
+        Object blueprint = invokeStatic(clazz, "getBlueprint", new Class<?>[]{String.class}, modelId);
+        Object animations = blueprint == null ? null : invoke(blueprint, "getAnimations");
+        return animations instanceof Map<?, ?> map ? normalized(map.keySet().stream().map(String::valueOf).toList()) : List.of();
+    }
+
+    @NotNull
     private static List<String> listMythicMobIds() throws ReflectiveOperationException {
         if (!isPluginEnabled("MythicMobs")) return List.of();
 
@@ -172,6 +210,15 @@ public final class ExternalProviderBridge {
     private static Object invokeStatic(@NotNull Class<?> clazz, @NotNull String name) throws ReflectiveOperationException {
         Method method = clazz.getMethod(name);
         return method.invoke(null);
+    }
+
+    @Nullable
+    private static Object invokeStatic(@NotNull Class<?> clazz,
+                                       @NotNull String name,
+                                       @NotNull Class<?>[] parameterTypes,
+                                       Object... arguments) throws ReflectiveOperationException {
+        Method method = clazz.getMethod(name, parameterTypes);
+        return method.invoke(null, arguments);
     }
 
     @Nullable

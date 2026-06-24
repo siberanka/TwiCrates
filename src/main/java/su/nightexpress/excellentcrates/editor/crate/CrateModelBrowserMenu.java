@@ -41,6 +41,20 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
         .appendClick("Click to select")
         .build();
 
+    private static final IconLocale LOCALE_STATE = LangEntry.iconBuilder("Editor.Button.Crate.ModelBrowser.State")
+        .rawName(GENERIC_VALUE)
+        .appendCurrent("Model", GENERIC_TYPE).br()
+        .appendClick("Click to select")
+        .build();
+
+    private static final IconLocale LOCALE_STATE_BROWSER = LangEntry.iconBuilder("Editor.Button.Crate.ModelBrowser.StateBrowser")
+        .name("Model State")
+        .appendCurrent("Model", GENERIC_TYPE)
+        .appendCurrent("Current", GENERIC_STATE).br()
+        .appendInfo("Browse BetterModel/ModelEngine", "animation states for this model.").br()
+        .appendClick("Click to open")
+        .build();
+
     private static final IconLocale LOCALE_PROVIDER = LangEntry.iconBuilder("Editor.Button.Crate.ModelBrowser.Provider")
         .name("Model Provider")
         .appendCurrent("Current", GENERIC_TYPE)
@@ -56,7 +70,15 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
         .appendClick("Click to change")
         .build();
 
-    public record Data(@NotNull Crate crate, @NotNull String phase, @NotNull CrateModelProvider provider) {}
+    private enum BrowserMode {
+        MODELS,
+        STATES
+    }
+
+    public record Data(@NotNull Crate crate,
+                       @NotNull String phase,
+                       @NotNull CrateModelProvider provider,
+                       @NotNull BrowserMode mode) {}
 
     public CrateModelBrowserMenu(@NotNull CratesPlugin plugin) {
         super(plugin, MenuType.GENERIC_9X5, Lang.EDITOR_TITLE_CRATE_SETTINGS.text());
@@ -66,13 +88,19 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
         this.addItem(MenuItem.background(Material.BLACK_STAINED_GLASS_PANE, IntStream.range(36, 45).toArray()));
         this.addItem(MenuItem.buildPreviousPage(this, 39));
         this.addItem(MenuItem.buildReturn(this, 40, (viewer, event) -> {
-            this.runNextTick(() -> this.plugin.getEditorManager().openOptionsMenu(viewer.getPlayer(), this.getLink(viewer).crate));
+            Data data = this.getLink(viewer);
+            if (data.mode == BrowserMode.STATES) {
+                this.runNextTick(() -> this.open(viewer.getPlayer(), new Data(data.crate, data.phase, data.provider, BrowserMode.MODELS)));
+            }
+            else {
+                this.runNextTick(() -> this.plugin.getEditorManager().openOptionsMenu(viewer.getPlayer(), data.crate));
+            }
         }));
         this.addItem(MenuItem.buildNextPage(this, 41));
     }
 
     public boolean open(@NotNull Player player, @NotNull Crate crate) {
-        return this.open(player, new Data(crate, "idle", crate.getJavaIdleModel().getProvider()));
+        return this.open(player, new Data(crate, "idle", crate.getJavaIdleModel().getProvider(), BrowserMode.MODELS));
     }
 
     @Override
@@ -82,25 +110,40 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
         var filler = MenuFiller.builder(this);
         filler.setSlots(IntStream.range(0, 36).toArray());
         filler.setItems(this.getItems(data));
-        filler.setItemCreator(id -> NightItem.fromType(Material.ITEM_FRAME)
-            .localized(LOCALE_MODEL)
+        filler.setItemCreator(id -> NightItem.fromType(data.mode == BrowserMode.STATES ? Material.NAME_TAG : Material.ITEM_FRAME)
+            .localized(data.mode == BrowserMode.STATES ? LOCALE_STATE : LOCALE_MODEL)
             .replacement(replacer -> replacer
                 .replace(GENERIC_VALUE, id)
-                .replace(GENERIC_TYPE, data.provider.getId())));
+                .replace(GENERIC_TYPE, data.mode == BrowserMode.STATES
+                    ? displayModelId(phaseModel(data.crate, data.phase))
+                    : data.provider.getId())));
         filler.setItemClick(id -> (viewer1, event) -> {
             JavaCrateModel model = phaseModel(data.crate, data.phase);
-            model.setProvider(data.provider);
-            if (data.provider == CrateModelProvider.ITEM_MODEL) {
-                model.setItemModel(id);
-                model.setProviderModelId("");
+            if (data.mode == BrowserMode.STATES) {
+                model.setProviderState(id);
             }
             else {
-                model.setProviderModelId(id);
+                model.setProvider(data.provider);
+                if (data.provider == CrateModelProvider.ITEM_MODEL) {
+                    model.setItemModel(id);
+                    model.setProviderModelId("");
+                    model.setProviderState("");
+                }
+                else {
+                    model.setProviderModelId(id);
+                    List<String> availableStates = ExternalProviderBridge.listModelStates(data.provider, id);
+                    if (!availableStates.contains(model.getProviderState())) model.setProviderState("");
+                }
             }
-            data.crate.markDirty();
-            data.crate.saveIfDirty();
-            this.plugin.getDisplayManager().ifPresent(manager -> manager.refresh(data.crate));
-            this.runNextTick(() -> this.flush(viewer1));
+            saveAndRefresh(data.crate);
+
+            List<String> states = statesFor(data.provider, model.getProviderModelId());
+            if (data.mode == BrowserMode.MODELS && states.size() > 1) {
+                this.runNextTick(() -> this.open(viewer1.getPlayer(), new Data(data.crate, data.phase, data.provider, BrowserMode.STATES)));
+            }
+            else {
+                this.runNextTick(() -> this.flush(viewer1));
+            }
         });
         return filler.build();
     }
@@ -118,7 +161,20 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
                     case "opening" -> "closing";
                     default -> "idle";
                 };
-                this.runNextTick(() -> this.open(viewer.getPlayer(), new Data(data.crate, next, data.provider)));
+                CrateModelProvider provider = phaseModel(data.crate, next).getProvider();
+                this.runNextTick(() -> this.open(viewer.getPlayer(), new Data(data.crate, next, provider, BrowserMode.MODELS)));
+            }).build()
+        );
+
+        JavaCrateModel selected = phaseModel(data.crate, data.phase);
+        viewer.addItem(NightItem.fromType(Material.ARMOR_STAND)
+            .localized(LOCALE_STATE_BROWSER)
+            .replacement(replacer -> replacer
+                .replace(GENERIC_TYPE, displayModelId(selected))
+                .replace(GENERIC_STATE, selected.getProviderState().isBlank() ? "default" : selected.getProviderState()))
+            .toMenuItem().setSlots(37).setHandler((viewer1, event) -> {
+                if (statesFor(selected.getProvider(), selected.getProviderModelId()).size() <= 1) return;
+                this.runNextTick(() -> this.open(viewer1.getPlayer(), new Data(data.crate, data.phase, selected.getProvider(), BrowserMode.STATES)));
             }).build()
         );
 
@@ -129,7 +185,7 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
                 .replace(GENERIC_STATE, () -> CoreLang.STATE_YES_NO.get(ExternalProviderBridge.isProviderAvailable(data.provider))))
             .toMenuItem().setSlots(38).setHandler((viewer1, event) -> {
                 CrateModelProvider next = Lists.next(data.provider);
-                this.runNextTick(() -> this.open(viewer.getPlayer(), new Data(data.crate, data.phase, next)));
+                this.runNextTick(() -> this.open(viewer.getPlayer(), new Data(data.crate, data.phase, next, BrowserMode.MODELS)));
             }).build()
         );
 
@@ -143,12 +199,39 @@ public class CrateModelBrowserMenu extends LinkedMenu<CratesPlugin, CrateModelBr
 
     @NotNull
     private List<String> getItems(@NotNull Data data) {
+        JavaCrateModel model = phaseModel(data.crate, data.phase);
+        if (data.mode == BrowserMode.STATES) {
+            return statesFor(data.provider, model.getProviderModelId());
+        }
         if (data.provider == CrateModelProvider.ITEM_MODEL) {
             return Arrays.asList(
-                phaseModel(data.crate, data.phase).getItemModel().isBlank() ? "twicrates:example_model" : phaseModel(data.crate, data.phase).getItemModel()
+                model.getItemModel().isBlank() ? "twicrates:example_model" : model.getItemModel()
             );
         }
         return ExternalProviderBridge.listModelIds(data.provider);
+    }
+
+    @NotNull
+    private static List<String> statesFor(@NotNull CrateModelProvider provider, @NotNull String modelId) {
+        if (provider != CrateModelProvider.BETTERMODEL && provider != CrateModelProvider.MODELENGINE) return List.of();
+        java.util.ArrayList<String> states = new java.util.ArrayList<>();
+        states.add("default");
+        states.addAll(ExternalProviderBridge.listModelStates(provider, modelId));
+        return states.stream().distinct().limit(512).toList();
+    }
+
+    @NotNull
+    private static String displayModelId(@NotNull JavaCrateModel model) {
+        if (model.getProvider() == CrateModelProvider.ITEM_MODEL) {
+            return model.getItemModel().isBlank() ? "-" : model.getItemModel();
+        }
+        return model.getProviderModelId().isBlank() ? "-" : model.getProviderModelId();
+    }
+
+    private void saveAndRefresh(@NotNull Crate crate) {
+        crate.markDirty();
+        crate.saveIfDirty();
+        this.plugin.getDisplayManager().ifPresent(manager -> manager.refresh(crate));
     }
 
     @NotNull

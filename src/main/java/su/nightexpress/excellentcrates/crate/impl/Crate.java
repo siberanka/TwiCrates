@@ -422,6 +422,7 @@ public class Crate implements ConfigBacked {
         model.setItemModel(config.getString(path + ".Item_Model", ""));
         model.setProvider(config.getString(path + ".Provider", "item_model"));
         model.setProviderModelId(config.getString(path + ".Model_Id", ""));
+        model.setProviderState(config.getString(path + ".State", ""));
     }
 
     private void writeJavaModel(@NotNull FileConfig config,
@@ -435,6 +436,7 @@ public class Crate implements ConfigBacked {
         config.set(path + ".Item_Model", model.getItemModel().isBlank() ? null : model.getItemModel());
         config.set(path + ".Provider", model.getProvider().getId());
         config.set(path + ".Model_Id", model.getProviderModelId().isBlank() ? null : model.getProviderModelId());
+        config.set(path + ".State", model.getProviderState().isBlank() ? null : model.getProviderState());
     }
 
     private void writeRewards(@NotNull FileConfig config) {
@@ -725,7 +727,10 @@ public class Crate implements ConfigBacked {
             "External provider rendering is optional-safe: if the provider is missing or cannot expose the model, TwiCrates keeps the item-model fallback.");
         config.setComments("Block.Display.Java.Models.Idle.Model_Id",
             "External provider model id selected from BetterModel, ModelEngine or MythicMobs.",
-            "Use /twicrate model <crate> <idle|opening|closing> <provider> <id> for tab-completed ids.");
+            "Use /twicrate model <crate> <idle|opening|closing> <provider> <id> [state] for tab-completed ids and states.");
+        config.setComments("Block.Display.Java.Models.Idle.State",
+            "Optional BetterModel/ModelEngine animation state for this model, for example idle, open or close.",
+            "Leave empty to use the provider's native default. State names are read from the selected model API and are bounded to 128 characters.");
         config.setComments("Block.Display.Java.Models.Opening.Enabled",
             "Shows this model only to the player currently opening this physical crate.",
             "When disabled, the idle model remains visible throughout the opening.");
@@ -735,6 +740,9 @@ public class Crate implements ConfigBacked {
             "Opening model source. Leave Provider as item_model for resource-pack ItemDisplay models.");
         config.setComments("Block.Display.Java.Models.Opening.Model_Id",
             "Opening external provider model id. Empty uses the item-model fallback.");
+        config.setComments("Block.Display.Java.Models.Opening.State",
+            "Optional BetterModel/ModelEngine animation state used during this crate opening phase.",
+            "This provider state is separate from the TwiCrates opening phase and is selected per model.");
         config.setComments("Block.Display.Java.Models.Closing.Enabled",
             "Shows this model to the opening player after rewards are delivered.",
             "When disabled, TwiCrates switches directly back to the idle model.");
@@ -744,6 +752,9 @@ public class Crate implements ConfigBacked {
             "Closing model source. Leave Provider as item_model for resource-pack ItemDisplay models.");
         config.setComments("Block.Display.Java.Models.Closing.Model_Id",
             "Closing external provider model id. Empty uses the item-model fallback.");
+        config.setComments("Block.Display.Java.Models.Closing.State",
+            "Optional BetterModel/ModelEngine animation state used during this crate closing phase.",
+            "Leave empty to use the provider's default state or when the provider does not expose animation states.");
         config.setComments("Block.Display.Java.Scale",
             "Uniform model scale. TwiCrates clamps this to 0.05..4.0 to prevent abusive entity bounds or rendering load.");
         config.setComments("Block.Display.Java.Y_Offset",
