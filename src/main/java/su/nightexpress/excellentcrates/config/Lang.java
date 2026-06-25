@@ -25,6 +25,7 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_ARGUMENT_NAME_STATE = LangEntry.builder("Command.Argument.Name.State").text("state");
     public static final TextLocale COMMAND_ARGUMENT_NAME_REWARD = LangEntry.builder("Command.Argument.Name.Reward").text("reward");
     public static final TextLocale COMMAND_ARGUMENT_NAME_ITEM = LangEntry.builder("Command.Argument.Name.Item").text("item");
+    public static final TextLocale COMMAND_ARGUMENT_NAME_Y_OFFSET = LangEntry.builder("Command.Argument.Name.YOffset").text("y_offset");
     public static final TextLocale COMMAND_ARGUMENT_NAME_X     = LangEntry.builder("Command.Argument.Name.X").text("x");
     public static final TextLocale COMMAND_ARGUMENT_NAME_Y     = LangEntry.builder("Command.Argument.Name.Y").text("y");
     public static final TextLocale COMMAND_ARGUMENT_NAME_Z     = LangEntry.builder("Command.Argument.Name.Z").text("z");
@@ -56,6 +57,7 @@ public class Lang implements LangContainer {
     public static final TextLocale COMMAND_RESET_COOLDOWN_DESC = LangEntry.builder("Command.ResetCooldown.Desc").text("Reset player's crate open cooldown.");
     public static final TextLocale COMMAND_SET_DESC            = LangEntry.builder("Command.Set.Desc").text("Link the targeted block to a crate with per-platform display facing.");
     public static final TextLocale COMMAND_MODEL_DESC          = LangEntry.builder("Command.Model.Desc").text("Select a crate display model and optional BetterModel/ModelEngine state.");
+    public static final TextLocale COMMAND_EFFECT_OFFSET_DESC  = LangEntry.builder("Command.EffectOffset.Desc").text("Set the crate particle effect vertical offset.");
     public static final TextLocale COMMAND_CRAFTENGINE_DESC    = LangEntry.builder("Command.CraftEngine.Desc").text("Select CraftEngine items for crate base items or rewards.");
     public static final TextLocale COMMAND_CRAFTENGINE_BASE_DESC = LangEntry.builder("Command.CraftEngine.Base.Desc").text("Set a crate item from a CraftEngine custom item id.");
     public static final TextLocale COMMAND_CRAFTENGINE_REWARD_DESC = LangEntry.builder("Command.CraftEngine.Reward.Desc").text("Add a CraftEngine custom item id to an item reward.");
@@ -134,6 +136,9 @@ public class Lang implements LangContainer {
 
     public static final MessageLocale COMMAND_MODEL_DONE = LangEntry.builder("Command.Model.Done").chatMessage(
         GRAY.wrap("Set " + SOFT_YELLOW.wrap(GENERIC_TYPE) + " " + SOFT_YELLOW.wrap(GENERIC_VALUE) + " model for " + SOFT_YELLOW.wrap(CRATE_NAME) + "."));
+
+    public static final MessageLocale COMMAND_EFFECT_OFFSET_DONE = LangEntry.builder("Command.EffectOffset.Done").chatMessage(
+        GRAY.wrap("Set particle effect Y offset for " + SOFT_YELLOW.wrap(CRATE_NAME) + " to " + SOFT_YELLOW.wrap(GENERIC_VALUE) + "."));
 
     public static final MessageLocale COMMAND_CRAFTENGINE_BASE_DONE = LangEntry.builder("Command.CraftEngine.Base.Done").chatMessage(
         GRAY.wrap("Set " + SOFT_YELLOW.wrap(CRATE_NAME) + " item to CraftEngine item " + SOFT_YELLOW.wrap(GENERIC_VALUE) + "."));

@@ -817,7 +817,7 @@ public class CrateManager extends AbstractManager<CratesPlugin> {
 
                 Location location = worldPos.toLocation();
                 if (location == null) return;
-                location.add(0D, crate.getJavaDisplayYOffset() + crate.getJavaIdleModel().getYOffset(), 0D);
+                location.add(0D, crate.getJavaDisplayYOffset() + crate.getJavaIdleModel().getYOffset() + crate.getEffectYOffset(), 0D);
 
                 CrateUtils.getPlayersForEffects(location).forEach(player -> {
                     effect.playStep(location, particle, player);

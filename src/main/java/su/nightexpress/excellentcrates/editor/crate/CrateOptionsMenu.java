@@ -128,7 +128,8 @@ public class CrateOptionsMenu extends LinkedMenu<CratesPlugin, Crate> implements
 
     private static final IconLocale LOCALE_EFFECT = LangEntry.iconBuilder("Editor.Button.Crate.Effect").name("Crate Effect")
         .appendCurrent("Model", GENERIC_TYPE)
-        .appendCurrent("Particle", GENERIC_VALUE).br()
+        .appendCurrent("Particle", GENERIC_VALUE)
+        .appendCurrent("Y Offset", GENERIC_AMOUNT).br()
         .appendInfo("Sets effect for the crate block(s).").br()
         .appendClick("Click to edit")
         .build();
@@ -329,7 +330,8 @@ public class CrateOptionsMenu extends LinkedMenu<CratesPlugin, Crate> implements
             .localized(LOCALE_EFFECT)
             .replacement(replacer -> replacer
                 .replace(GENERIC_TYPE, () -> StringUtil.capitalizeUnderscored(crate.getEffectType()))
-                .replace(GENERIC_VALUE, () -> Lang.PARTICLE.getLocalized(crate.getEffectParticle().getParticle())))
+                .replace(GENERIC_VALUE, () -> Lang.PARTICLE.getLocalized(crate.getEffectParticle().getParticle()))
+                .replace(GENERIC_AMOUNT, () -> String.valueOf(crate.getEffectYOffset())))
             .toMenuItem().setSlots(31).setHandler((viewer1, event) -> {
                 this.dialogs.show(player, CrateDialogs.CRATE_EFFECT, crate, flush);
             }).build()

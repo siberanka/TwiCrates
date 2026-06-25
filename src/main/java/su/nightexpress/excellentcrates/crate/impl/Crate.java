@@ -99,6 +99,7 @@ public class Crate implements ConfigBacked {
     private boolean effectEnabled;
     private String      effectType;
     private UniParticle effectParticle;
+    private double      effectYOffset;
 
     private boolean  displayEnabled;
     private boolean  javaDisplayEnabled;
@@ -277,6 +278,8 @@ public class Crate implements ConfigBacked {
         this.setEffectType(config.getString("Block.Effect.Model", EffectId.NONE));
         this.setEffectParticle(UniParticle.read(config, "Block.Effect.Particle"));
         this.setEffectEnabled(config.getBoolean("Block.Effect.Enabled", !this.effectType.equalsIgnoreCase(EffectId.NONE)));
+        this.setEffectYOffset(config.getDouble("Block.Effect.Y_Offset", 0D));
+        config.set("Block.Effect.Y_Offset", this.effectYOffset);
 
         this.setDisplayEnabled(config.getBoolean("Block.Display.Enabled", false));
         this.setJavaDisplayEnabled(config.getBoolean("Block.Display.Java.Enabled", true));
@@ -378,6 +381,7 @@ public class Crate implements ConfigBacked {
         config.set("Block.Hologram.Y_Offset", this.hologramYOffset);
         config.set("Block.Effect.Enabled", this.effectEnabled);
         config.set("Block.Effect.Model", this.effectType);
+        config.set("Block.Effect.Y_Offset", this.effectYOffset);
         config.remove("Block.Effect.Particle");
         this.effectParticle.write(config, "Block.Effect.Particle");
 
@@ -712,6 +716,10 @@ public class Crate implements ConfigBacked {
             "Enables TwiCrates' packet-safe, per-platform crate display system.",
             "The linked location uses a real BARRIER as its authoritative server-side interaction anchor.",
             "Bedrock clients receive the configured Bedrock block while Java clients receive the selected model above that anchor.");
+        config.setComments("Block.Effect.Y_Offset",
+            "Additional vertical offset for the particle effect center.",
+            "It is added on top of the Java display base height and idle model Y_Offset so effects can orbit higher or lower than the crate model.",
+            "Values are clamped to -16.0..16.0 to avoid abusive or accidental far-away particle calculations.");
         config.setComments("Block.Display.Default_Facing",
             "Fallback direction for old placements. Allowed values: NORTH, EAST, SOUTH, WEST.",
             "The /twicrate set <crate> command stores a direction for every placement.");
@@ -1209,6 +1217,14 @@ public class Crate implements ConfigBacked {
 
     public void setEffectEnabled(boolean effectEnabled) {
         this.effectEnabled = effectEnabled;
+    }
+
+    public double getEffectYOffset() {
+        return this.effectYOffset;
+    }
+
+    public void setEffectYOffset(double effectYOffset) {
+        this.effectYOffset = Math.clamp(Double.isFinite(effectYOffset) ? effectYOffset : 0D, -16D, 16D);
     }
 
     @NotNull

@@ -34,12 +34,14 @@ public class CrateEffectDialog extends Dialog<Crate> {
 
     private static final TextLocale INPUT_ENABLED = LangEntry.builder("Dialog.Crate.Effect.Input.Enabled").text("Enabled");
     private static final TextLocale INPUT_MODEL = LangEntry.builder("Dialog.Crate.Effect.Input.Model").text(SOFT_YELLOW.wrap("Effect Model"));
+    private static final TextLocale INPUT_Y_OFFSET = LangEntry.builder("Dialog.Crate.Effect.Input.YOffset").text(SOFT_YELLOW.wrap("Y Offset (-16.0..16.0)"));
 
     private static final ButtonLocale BUTTON_PARTICLE = LangEntry.builder("Dialog.Crate.Effect.Button.Particle").button(SOFT_YELLOW.wrap("Particle: ") + "%s");
 
     private static final String ACTION_PARTICLE = "particle";
     private static final String JSON_ENABLED = "enabled";
     private static final String JSON_MODEL      = "model";
+    private static final String JSON_Y_OFFSET   = "y_offset";
 
     private final DialogRegistry dialogs;
 
@@ -61,7 +63,8 @@ public class CrateEffectDialog extends Dialog<Crate> {
                 .body(DialogBodies.plainMessage(BODY))
                 .inputs(
                     DialogInputs.bool(JSON_ENABLED, INPUT_ENABLED).initial(crate.isEffectEnabled()).build(),
-                    DialogInputs.singleOption(JSON_MODEL, INPUT_MODEL, entries).build()
+                    DialogInputs.singleOption(JSON_MODEL, INPUT_MODEL, entries).build(),
+                    DialogInputs.text(JSON_Y_OFFSET, INPUT_Y_OFFSET).initial(String.valueOf(crate.getEffectYOffset())).maxLength(12).build()
                 )
                 .afterAction(WrappedDialogAfterAction.NONE)
                 .build()
@@ -86,6 +89,7 @@ public class CrateEffectDialog extends Dialog<Crate> {
 
                 crate.setEffectEnabled(nbtHolder.getBoolean(JSON_ENABLED, crate.isEffectEnabled()));
                 crate.setEffectType(nbtHolder.getText(JSON_MODEL, crate.getEffectType()));
+                crate.setEffectYOffset(nbtHolder.getDouble(JSON_Y_OFFSET, crate.getEffectYOffset()));
                 crate.markDirty();
                 viewer.closeFully();
             });

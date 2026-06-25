@@ -200,6 +200,18 @@ public class BaseCommands {
             .executes(this::setCrateModel)
         );
 
+        nodeBuilder.branch(Commands.literal("effectoffset")
+            .description(Lang.COMMAND_EFFECT_OFFSET_DESC)
+            .permission(Perms.COMMAND_EFFECT_OFFSET)
+            .withArguments(
+                CommandArguments.forCrate(plugin),
+                Arguments.decimal(CommandArguments.Y_OFFSET)
+                    .localized(Lang.COMMAND_ARGUMENT_NAME_Y_OFFSET)
+                    .suggestions((reader, context) -> Lists.newList("-1", "-0.5", "0", "0.5", "1"))
+            )
+            .executes(this::setCrateEffectOffset)
+        );
+
         nodeBuilder.branch(Commands.hub("craftengine")
             .description(Lang.COMMAND_CRAFTENGINE_DESC)
             .permission(Perms.COMMAND_CRAFTENGINE)
@@ -268,6 +280,21 @@ public class BaseCommands {
             .replace(crate.replacePlaceholders())
             .replace(Placeholders.GENERIC_TYPE, phase + "/" + provider.getId())
             .replace(Placeholders.GENERIC_VALUE, model.getProviderState().isBlank() ? modelId : modelId + "#" + model.getProviderState())
+        );
+        return true;
+    }
+
+    private boolean setCrateEffectOffset(@NotNull CommandContext context, @NotNull ParsedArguments arguments) {
+        Crate crate = arguments.get(CommandArguments.CRATE, Crate.class);
+        double offset = arguments.getDouble(CommandArguments.Y_OFFSET);
+
+        crate.setEffectYOffset(offset);
+        crate.markDirty();
+        crate.saveIfDirty();
+
+        Lang.COMMAND_EFFECT_OFFSET_DONE.message().send(context.getSender(), replacer -> replacer
+            .replace(crate.replacePlaceholders())
+            .replace(Placeholders.GENERIC_VALUE, String.valueOf(crate.getEffectYOffset()))
         );
         return true;
     }

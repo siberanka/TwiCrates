@@ -14,6 +14,7 @@ Original project by NightExpress. TwiCrates fork development by siberanka.
 - Resource-pack status gating: models can be hidden until a Java client reports that the pack loaded successfully.
 - Automatic Bedrock re-synchronization after join, teleport, respawn, world/chunk movement and periodic server block refreshes.
 - Existing crate rewards, costs, limits, cooldowns, openings, keys, holograms and particles remain on the ExcellentCrates pipeline.
+- Crate particle effect centers can be raised or lowered per crate from YAML, command or editor dialog without changing reward logic.
 - Backward-compatible Java packages/API and command aliases. `plugin.yml` also provides the `ExcellentCrates` capability for integrations.
 
 ## Safe display design
@@ -59,6 +60,12 @@ When enabled, Java crate models and holograms use the detected packet backend; P
 
 ```yaml
 Block:
+  Effect:
+    Enabled: true
+    Model: HELIX
+    # Added on top of the Java display base height and idle model Y_Offset.
+    # Use this to move the particle animation center up or down around the visible model.
+    Y_Offset: 0.0
   Display:
     Enabled: true
     Default_Facing: SOUTH
@@ -114,6 +121,8 @@ Animation:
 
 Opening and closing models are per-player in packet mode: the opener sees the active phase while other players keep the idle model. Each Java phase has its own `Y_Offset`, added on top of the shared `Block.Display.Java.Y_Offset`, so idle/opening/closing animations can be nudged up or down independently. If the opening model/block is disabled or empty, idle remains visible. If closing is absent, the display returns directly to idle after reward delivery. The Bukkit fallback applies the safest aggregate phase globally because server entities cannot carry different item metadata per viewer.
 
+Crate particle effects are emitted from the Java display base height plus the idle model `Y_Offset`, then adjusted by `Block.Effect.Y_Offset`. This lets the effect orbit the visible crate model even when the model itself is moved. `Block.Effect.Y_Offset` is clamped to `-16.0..16.0`.
+
 For Java model phases, `Provider: item_model` keeps the resource-pack `ItemDisplay` path. `Provider: bettermodel`, `modelengine` or `mythicmobs` stores the selected provider model id in `Model_Id`. BetterModel and ModelEngine models can additionally set `State` to one of the animations exposed by that concrete model (for example `idle`, `open` or `close`); an empty value uses the provider default. BetterModel displays use viewer-scoped `DummyTracker` instances, so opening/closing states remain private to the opener and no server entity is created. If a provider is absent, reloading or cannot expose/create the id safely, TwiCrates closes stale handles and keeps the item-model fallback instead of crashing.
 
 The crate editor exposes **Java & Bedrock Display**, **External Model Browser** and **CraftEngine Base Item** actions. The external model browser is paginated and cycles idle/opening/closing plus item_model/BetterModel/ModelEngine/MythicMobs providers. Selecting a BetterModel or ModelEngine model opens a second paginated state browser populated from that model's live API; `default` clears the explicit state. Reward item content has a **CraftEngine Items** browser for adding CraftEngine custom items directly. The existing **Opening Animation** dialog also edits reward-delivery and closing-state durations. All labels and Bedrock form text use the normal TwiCrates language-entry system.
@@ -124,6 +133,7 @@ Useful Bedrock block examples include `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_S
 
 - `/twicrate model <crate> <idle|opening|closing> <item_model|bettermodel|modelengine|mythicmobs> <id> [state]` - sets the Java display model source; model IDs and BetterModel/ModelEngine states are context-aware tab completions. Use `default` or omit the state to clear an explicit state.
   Selecting a model through this command or the model browser automatically enables the crate display, Java display and selected phase.
+- `/twicrate effectoffset <crate> <y_offset>` - sets the crate particle effect center offset, clamped to `-16.0..16.0`.
 - `/twicrate craftengine base <crate> <item-id>` - sets the crate base item from a CraftEngine custom item.
 - `/twicrate craftengine reward <crate> <reward-id> <item-id> [amount]` - adds a CraftEngine custom item to an item reward.
 
@@ -131,7 +141,7 @@ Useful Bedrock block examples include `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_S
 - `/twicrate reload` — reloads the plugin and recreates displays.
 - All original ExcellentCrates aliases remain available, including `/crates` and `/excellentcrates`.
 
-The new placement/model permissions are `twicrates.command.set`, `twicrates.command.model` and `twicrates.command.craftengine`. Existing ExcellentCrates permissions remain unchanged for compatibility.
+The new placement/model permissions are `twicrates.command.set`, `twicrates.command.model`, `twicrates.command.effectoffset` and `twicrates.command.craftengine`. Existing ExcellentCrates permissions remain unchanged for compatibility.
 
 ## Bedrock behavior
 

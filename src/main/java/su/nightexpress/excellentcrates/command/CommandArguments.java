@@ -26,6 +26,7 @@ public class CommandArguments {
     public static final String REWARD = "reward";
     public static final String ITEM   = "item";
     public static final String AMOUNT = "amount";
+    public static final String Y_OFFSET = "y_offset";
     public static final String X      = "x";
     public static final String Y      = "y";
     public static final String Z      = "z";
