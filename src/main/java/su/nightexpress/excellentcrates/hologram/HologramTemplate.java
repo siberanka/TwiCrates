@@ -38,7 +38,7 @@ public class HologramTemplate implements Writeable {
 
         HologramTemplate template1 = new HologramTemplate(Placeholders.DEFAULT, Lists.newList(
             LIGHT_YELLOW.wrap(BOLD.wrap(CRATE_NAME)),
-            LIGHT_GRAY.wrap("You can open this crate " + LIGHT_YELLOW.wrap("%excellentcrates_openings_available_" + CRATE_ID + "%") + " times."),
+            LIGHT_GRAY.wrap("You can open this crate " + LIGHT_YELLOW.wrap("%twicrates_openings_available_" + CRATE_ID + "%") + " times."),
             LIGHT_GRAY.wrap("Edit templates in " + LIGHT_YELLOW.wrap("config.yml")))
         );
 

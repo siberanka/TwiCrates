@@ -18,35 +18,51 @@ import su.nightexpress.nightcore.util.NumberUtil;
 import su.nightexpress.nightcore.util.profile.CachedProfile;
 import su.nightexpress.nightcore.util.time.TimeFormats;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
 
 public class PlaceholderHook {
 
-    private static Expansion expansion;
+    private static final String IDENTIFIER_PRIMARY = "twicrates";
+    private static final String IDENTIFIER_SHORT = "twicrate";
+    private static final String IDENTIFIER_LEGACY = "excellentcrates";
+
+    private static final List<Expansion> expansions = new ArrayList<>();
 
     public static void setup(@NotNull CratesPlugin plugin) {
-        if (expansion == null) {
-            expansion = new Expansion(plugin);
-            expansion.register();
+        if (expansions.isEmpty()) {
+            register(plugin, IDENTIFIER_PRIMARY);
+            register(plugin, IDENTIFIER_SHORT);
+            register(plugin, IDENTIFIER_LEGACY);
         }
     }
 
     public static void shutdown() {
-        if (expansion != null) {
-            expansion.unregister();
-            expansion = null;
+        if (!expansions.isEmpty()) {
+            expansions.forEach(Expansion::unregister);
+            expansions.clear();
+        }
+    }
+
+    private static void register(@NotNull CratesPlugin plugin, @NotNull String identifier) {
+        Expansion expansion = new Expansion(plugin, identifier);
+        if (expansion.register()) {
+            expansions.add(expansion);
         }
     }
 
     private static class Expansion extends PlaceholderExpansion {
 
         private final CratesPlugin                                   plugin;
+        private final String                                         identifier;
         private final Map<String, BiFunction<Player, Crate, String>> userPlaceholders;
 
-        public Expansion(@NotNull CratesPlugin plugin) {
+        public Expansion(@NotNull CratesPlugin plugin, @NotNull String identifier) {
             this.plugin = plugin;
+            this.identifier = identifier;
             this.userPlaceholders = new LinkedHashMap<>();
 
             this.userPlaceholders.put("keys", (player, crate) -> {
@@ -133,7 +149,7 @@ public class PlaceholderHook {
         @Override
         @NotNull
         public String getIdentifier() {
-            return this.plugin.getName().toLowerCase();
+            return this.identifier;
         }
 
         @Override
