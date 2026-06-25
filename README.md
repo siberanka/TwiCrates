@@ -188,3 +188,196 @@ The plugin jar is produced under `target/TwiCrates-<version>.jar`.
 ## License
 
 TwiCrates remains distributed under the repository's GPL-3.0 license. See `LICENSE`.
+
+---
+
+# TwiCrates Türkçe
+
+TwiCrates, Java ve Bedrock tarafında modern kasa gösterimine odaklanan, güvenlik açısından güçlendirilmiş bir ExcellentCrates forkudur. Kanıtlanmış ödül, ücret, limit ve açılış sistemi korunur; buna ek olarak resource pack kasa modelleri, Geyser/Floodgate uyumlu blok görünümleri ve native Bedrock formları eklenir.
+
+Orijinal proje NightExpress tarafından geliştirilmiştir. TwiCrates fork geliştirmesi siberanka tarafından yapılmaktadır.
+
+## Öne çıkanlar
+
+- `ItemDisplay`, modern `Item_Model`, eski `Custom_Model_Data`, ölçek, offset ve yaw kontrolleriyle oyuncu bazlı paket tabanlı Java resource pack modelleri.
+- Komutlar ve sayfalı editör menüleri üzerinden BetterModel, ModelEngine ve MythicMobs model ID seçimi. BetterModel/ModelEngine animasyon state keşfi ve oyuncuya özel BetterModel render desteği dahildir.
+- Kasa başına Bedrock/Geyser bloğu. Java oyuncusu resource pack modelini görürken Bedrock oyuncusu aynı konumda sandık, varil veya güvenli başka bir vanilla blok görebilir.
+- Yerleşim bazlı yön desteği. Java modeli ve yönlü Bedrock bloğu aynı kayıtlı yönü kullanır.
+- Geyser/Floodgate Cumulus ile native Bedrock kasa özeti, sayfalı ödül tarayıcı, ödül detayları ve ücret seçme formları.
+- Resource pack durumu kontrolü: Java client resource pack’i başarıyla yüklediğini bildirene kadar modeller gizlenebilir.
+- Join, teleport, respawn, dünya/chunk hareketleri ve periyodik server blok yenilemeleri sonrasında otomatik Bedrock yeniden senkronizasyonu.
+- Mevcut kasa ödülleri, ücretleri, limitleri, cooldownları, açılışları, anahtarları, hologramları ve partikülleri ExcellentCrates sistemi üzerinde kalır.
+- Kasa partikül efekt merkezleri YAML, komut veya editör dialogu üzerinden kasa başına yukarı/aşağı alınabilir; ödül mantığına dokunulmaz.
+- Java package/API ve komut aliasları geriye dönük uyumludur. `plugin.yml` entegrasyonlar için `ExcellentCrates` capability bilgisini de sağlar.
+
+## Güvenli gösterim tasarımı
+
+TwiCrates, `/twicrate set` ile bağlanan bloğu gerçek server-side `BARRIER` bloğuna çevirir. Bu, paket backend’i yoksa veya geçici olarak kullanılamıyorsa bile görünmez ve otoriter bir etkileşim/çarpışma noktası sağlar. Java oyuncuları ayarlanan hafif modeli, Bedrock oyuncuları ise aynı koordinatta kendileri için ayarlanan client-side vanilla bloğu görür. Kasayı unlink etmek veya silmek yalnızca o bağlı konuma ait barrier bloğunu kaldırır.
+
+Geçici link hedefi olarak güvenli, container olmayan herhangi bir solid blok kullanılabilir; linkleme işlemi bu bloğu bilinçli olarak yönetilen barrier anchor ile değiştirir.
+
+Bu tasarım item düşmesi, model entity pickup, piston desync, ghost block ve chunk-save duplication risklerini azaltır. Bağlı bloklar kırılmaya, patlamalara, piston hareketine ve entity block dönüşümüne karşı korunur. Inventory-holder bloklar `/twicrate set` tarafından reddedilir; böylece kasa linkleme container içeriğini kilitleyemez veya açığa çıkaramaz.
+
+## Gereksinimler
+
+- Java 21 veya daha yeni
+- Spigot/Paper 1.21.8 veya daha yeni (1.21.10 API’ye karşı derlenmiştir)
+- NightCore `2.16.1-fork`
+- Opsiyonel: Bedrock tespiti ve native formlar için Geyser-Spigot ve/veya Floodgate
+- Opsiyonel: Paket tabanlı Java modelleri ve hologramlar için PacketEvents (önerilir) veya ProtocolLib
+- Opsiyonel: Provider destekli model ID seçimi için BetterModel, ModelEngine veya MythicMobs
+- Opsiyonel: NightCore item bridge üzerinden custom item ödülleri ve kasa base itemleri için CraftEngine
+
+TwiCrates şu anda upstream plugin’in Folia dışı scheduler modelini takip eder.
+
+## Hızlı kurulum
+
+1. TwiCrates’i ve uyumlu NightCore buildini kur.
+2. Kasanın `plugins/TwiCrates/crates/<crate>.yml` dosyasındaki `Block.Display` bölümünü ayarla.
+3. Bir barrier veya container olmayan başka bir solid blok koy.
+4. Bloğa bakarak `/twicrate set vote` komutunu çalıştır.
+5. YAML değişikliklerinden sonra TwiCrates’i reload et.
+
+Yerleşim, komutu çalıştıran oyuncunun baktığı yöne göre kaydedilir. Model yönünü ince ayarlamak için `Yaw_Offset` kullan. TwiCrates kaydedilen her kasa YAML dosyasına ayrıntılı İngilizce yorum satırları yazar.
+
+Paket render varsayılan olarak `config.yml` içinde açıktır:
+
+```yaml
+Crate:
+  Packet-Based_Mode: true
+```
+
+Bu açıkken Java kasa modelleri ve hologramlar algılanan paket backend’ini kullanır; iki entegrasyon da varsa PacketEvents tercih edilir. Fiziksel bağlı konum gerçek `BARRIER` olarak kalır, Bedrock ise kendi ayarlı client-side bloğunu görür. BetterModel viewer tracker’ları PacketEvents/ProtocolLib’den bağımsız çalışır. Item-model display’ler, paket backend’i yoksa veya runtime’da hata verirse güvenli şekilde yönetilen Bukkit `ItemDisplay` entity’lerine düşer. Ayarı `false` yapmak item-model kasa gösterimleri için Bukkit entity kullanır; hologramlar mevcut paket sistemini korur.
+
+## Kasa gösterim örneği
+
+```yaml
+Block:
+  Effect:
+    Enabled: true
+    Model: HELIX
+    # Java display base height ve idle model Y_Offset üzerine eklenir.
+    # Partikül animasyon merkezini görünen modelin çevresinde yukarı/aşağı almak için kullanılır.
+    Y_Offset: 0.0
+  Display:
+    Enabled: true
+    Default_Facing: SOUTH
+    # TwiCrates tarafından yönetilir. Her kayıt x,y,z,world,DIRECTION formatındadır.
+    Facings: []
+    Java:
+      Enabled: true
+      Models:
+        Idle:
+          Provider: item_model
+          Model_Id:
+          State:
+          Material: PAPER
+          Item_Model: 'twicrates:vote_crate_idle'
+          Custom_Model_Data: 10001
+          Y_Offset: 0.0
+        Opening:
+          Enabled: true
+          Provider: item_model
+          Model_Id:
+          State:
+          Material: PAPER
+          Item_Model: 'twicrates:vote_crate_opening'
+          Custom_Model_Data: 10002
+          Y_Offset: 0.0
+        Closing:
+          Enabled: true
+          Provider: item_model
+          Model_Id:
+          State:
+          Material: PAPER
+          Item_Model: 'twicrates:vote_crate_closing'
+          Custom_Model_Data: 10003
+          Y_Offset: 0.0
+      Scale: 1.0
+      Y_Offset: 0.5
+      Yaw_Offset: 0.0
+      Require_Accepted_Resource_Pack: false
+    Bedrock:
+      Enabled: true
+      Blocks:
+        Idle: CHEST
+        Opening: TRIAL_SPAWNER
+        Closing: VAULT
+      Forms:
+        Enabled: true
+
+Animation:
+  # En erken ödül verme süresi. Daha uzun opening provider animasyonları kesilmez.
+  Reward_Delivery_Delay_Ticks: 60
+  Closing_Model_Duration_Ticks: 20
+```
+
+Opening ve closing modelleri paket modunda oyuncu bazlıdır: kasayı açan oyuncu aktif fazı görürken diğer oyuncular idle modeli görmeye devam eder. Her Java fazının kendi `Y_Offset` değeri vardır; bu değer ortak `Block.Display.Java.Y_Offset` üzerine eklenir. Böylece idle/opening/closing animasyonları ayrı ayrı yukarı veya aşağı alınabilir. Opening model/blok kapalıysa veya boşsa idle görünür kalır. Closing yoksa ödül verildikten sonra display doğrudan idle’a döner. Bukkit fallback, server entity’leri oyuncu başına farklı item metadata taşıyamadığı için en güvenli global fazı uygular.
+
+Kasa partikül efektleri Java display base height ve idle model `Y_Offset` yüksekliğinden çıkar, ardından `Block.Effect.Y_Offset` ile ayarlanır. Böylece modelin kendisi taşınmış olsa bile efekt görünen kasa modelinin etrafında dönebilir. `Block.Effect.Y_Offset` değeri `-16.0..16.0` aralığına clamp edilir.
+
+Java model fazlarında `Provider: item_model`, resource pack `ItemDisplay` yolunu kullanır. `Provider: bettermodel`, `modelengine` veya `mythicmobs` seçildiğinde provider model ID’si `Model_Id` altında saklanır. BetterModel ve ModelEngine modelleri ayrıca ilgili model API’sinden gelen animasyon state’lerinden birini `State` olarak kullanabilir; örneğin `idle`, `open` veya `close`. Boş değer provider varsayılanını kullanır. BetterModel display’leri oyuncuya özel `DummyTracker` instance’ları kullanır; bu nedenle opening/closing state’leri sadece kasayı açan oyuncuya özel kalır ve server entity oluşturulmaz. Provider yoksa, reload oluyorsa veya ID güvenli şekilde oluşturulamıyorsa TwiCrates stale handle’ları kapatır ve crash atmak yerine item-model fallback’i korur.
+
+Kasa editörü **Java & Bedrock Display**, **External Model Browser** ve **CraftEngine Base Item** aksiyonlarını sunar. External model browser sayfalıdır ve idle/opening/closing ile item_model/BetterModel/ModelEngine/MythicMobs provider’ları arasında geçiş yapar. BetterModel veya ModelEngine modeli seçildiğinde, o modelin live API’sinden gelen state’lerle ikinci bir sayfalı state browser açılır; `default` açık state seçimini temizler. Ödül item içeriğinde CraftEngine custom itemlerini doğrudan eklemek için **CraftEngine Items** browser bulunur. Mevcut **Opening Animation** dialogu ayrıca ödül verme gecikmesini ve closing-state süresini düzenler. Tüm etiketler ve Bedrock form metinleri normal TwiCrates language-entry sistemini kullanır.
+
+Kullanışlı Bedrock blok örnekleri: `CHEST`, `BARREL`, `ENDER_CHEST`, `TRIAL_SPAWNER` veya tam blok datası olarak `minecraft:chest[type=single,waterlogged=false,facing=north]`. Geçersiz, air veya blok olmayan değerler güvenli şekilde `CHEST` fallback’ine düşer.
+
+## Komutlar ve izinler
+
+- `/twicrate model <crate> <idle|opening|closing> <item_model|bettermodel|modelengine|mythicmobs> <id> [state]` - Java display model kaynağını ayarlar. Model ID’leri ve BetterModel/ModelEngine state’leri context-aware tab completion ile gelir. Açık state’i temizlemek için `default` kullan veya state parametresini boş bırak.
+  Bu komutla veya model browser üzerinden model seçmek kasa display’ini, Java display’i ve seçilen fazı otomatik etkinleştirir.
+- `/twicrate effectoffset <crate> <y_offset>` - kasa partikül efekt merkez offsetini ayarlar; değer `-16.0..16.0` aralığına clamp edilir.
+- `/twicrate craftengine base <crate> <item-id>` - kasa base itemini CraftEngine custom iteminden ayarlar.
+- `/twicrate craftengine reward <crate> <reward-id> <item-id> [amount]` - item reward içine CraftEngine custom item ekler.
+
+- `/twicrate set <crate>` - bakılan container olmayan bloğu kasaya bağlar ve yönünü kaydeder.
+- `/twicrate reload` - plugini reload eder ve display’leri yeniden oluşturur.
+- `/crates` ve `/excellentcrates` dahil tüm orijinal ExcellentCrates aliasları kullanılabilir kalır.
+
+Yeni placement/model izinleri: `twicrates.command.set`, `twicrates.command.model`, `twicrates.command.effectoffset` ve `twicrates.command.craftengine`. Mevcut ExcellentCrates izinleri uyumluluk için korunur.
+
+## Bedrock davranışı
+
+Yerel Geyser veya Floodgate API kullanılabiliyorsa Bedrock oyuncuları şunları alır:
+
+- Java item modeli yerine ayarlanmış vanilla blok;
+- Java modeliyle aynı north/east/south/west yönü;
+- kasa detayları, sayfalı ödüller, ödül açıklamaları ve ücret seçimi için native formlar;
+- açılıştan hemen önce temel restriction, permission, cooldown, inventory-space, affordability ve opening-availability kontrolleri;
+- form seçiminden sonra normal Geyser tarafından çevrilen opening animasyonu, hologram ve partikül pipeline’ı.
+
+Platform API yoksa veya formlar kasa için kapalıysa TwiCrates upstream inventory interaction sistemine düşer. Form callback’inden ödül verilmez; formlar yalnızca aksiyon seçer, ardından mevcut otoriter opening pipeline tüm validasyonları ve ödül işlemlerini yapar.
+
+## Güvenilirlik ve güvenlik kontrolleri
+
+- Tüm Bukkit world, entity, inventory ve opening işlemleri server thread üzerinde çalışır.
+- Form callback’leri oyuncu durumunu, crate ownership’i ve source location’ı yeniden doğrular.
+- Reward delay tek otoriter opening completion noktasında uygulanır; display geçişleri cost’u tekrar tüketmez ve ödülü çoğaltmaz.
+- Display faz durumu oyuncu ve fiziksel kasa konumu bazlıdır, aktif opening’lerle sınırlandırılır ve quit, chunk unload, reload ve shutdown sırasında temizlenir.
+- Oyuncu başına action debounce, tekrarlanan Bedrock form cevaplarının duplicate opening başlatmasını engeller.
+- Display scale ve offsetler sınırlandırılır; form metni, reward page ve block update değerleri cap’lenir.
+- Packet mode Java model entity’si oluşturmaz. Oyuncu başına viewer setleri distance/chunk bazlı sınırlandırılır ve quit, chunk unload, reload ve shutdown sırasında temizlenir.
+- Bukkit fallback persistent olmayan, invulnerable, gravity-free display entity’leri kullanır; UUID ile takip edilir ve chunk unload/plugin shutdown sırasında kaldırılır.
+- Kasa partikül efektleri Java modelin idle display yüksekliğinden çıkar ve güvenli NightCore fallback’iyle force-enabled oyuncu particle packet’leri kullanır; bu yüzden packet-based kasa blokları çevredeki efekt animasyonunu bastırmaz.
+- Online oyuncular startup/reload sonrasında, ayrıca join, teleport, respawn, world change ve chunk movement sonrasında yeniden senkronize edilir; bounded periodic reconciliation kaçan client packet’lerini onarır.
+- Oyuncu başına virtual linked-block görünümleri bounded tutulur, distance/chunk bazlı reconcile edilir ve crate removal, reload ve shutdown sırasında gerçek server bloğuna döndürülür.
+- Player/resource-pack/form takipleri quit ve shutdown sırasında temizlenir.
+- Geçersiz model materialları, item-model keyleri ve Bedrock block data değerleri güvenli varsayılanlara düşer.
+- Yeni özellikler shell, expression-language, reflection ile seçilen command veya user-controlled class loading açmaz.
+- TwiCrates Log4j eklemez ve raw form payload loglamaz.
+
+Bu kontroller memory leak, dupe, command injection, crash ve lag saldırı yüzeyini azaltır. Production’a almadan önce yine de kendi Geyser sürümünü, Bedrock resource pack’ini, custom model geometry’lerini ve opening provider’larını staging sunucuda test etmen önerilir.
+
+## Build
+
+```powershell
+$env:JAVA_HOME = 'F:\vds\Java\jdk-25.0.2+10'
+$env:JAVA_TOOL_OPTIONS = '-Djavax.net.ssl.trustStoreType=WINDOWS-ROOT'
+mvn clean package
+```
+
+Plugin jar dosyası `target/TwiCrates-<version>.jar` altında oluşturulur.
+
+## Lisans
+
+TwiCrates, repository’nin GPL-3.0 lisansı altında dağıtılmaya devam eder. Detaylar için `LICENSE` dosyasına bak.
